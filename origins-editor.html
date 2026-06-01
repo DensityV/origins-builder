@@ -1,0 +1,3036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Origins Builder</title>
+<!-- BUILD: 2026-05-11-LAN-v3 -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#1e1e2e;font-family:'Segoe UI',system-ui,sans-serif}
+#root{width:100%;height:100%;display:flex;flex-direction:column}
+input,select{font-family:inherit;outline:none}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#3a3a5c;border-radius:3px}
+.flyout{background:#2a2a3e;padding:8px;z-index:100;flex-shrink:0;}
+.flyout-block{touch-action:none}
+.flyout-block{margin-bottom:6px;cursor:grab;display:block}
+.flyout-block:active{cursor:grabbing}
+.cat-icon{width:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 4px;cursor:pointer;border-right:3px solid transparent;transition:all 0.15s}
+.cat-icon:hover{background:rgba(255,255,255,0.05)}
+.cat-icon.active{border-right-color:currentColor;background:rgba(255,255,255,0.08)}
+.cat-dot{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.cat-label{font-size:9px;font-weight:600;letter-spacing:0.04em;text-align:center}
+</style>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+const {useState,useRef,useCallback,useEffect,useReducer,createElement:h} = React;
+
+// ── Load settings from localStorage ──────────────────────────────────────
+const EDITOR_SETTINGS = (() => {
+  try { return JSON.parse(localStorage.getItem('origins-editor-settings') || '{}'); } catch(e) { return {}; }
+})();
+const S = {
+  palettePos:   EDITOR_SETTINGS.palettePos  || 'left',
+  paletteWidth: EDITOR_SETTINGS.paletteWidth|| 220,
+  canvasBg:     EDITOR_SETTINGS.canvasBg    || '#1a1a2e',
+  panelBg:      EDITOR_SETTINGS.panelBg     || '#1a1a2e',
+  accent:       EDITOR_SETTINGS.accent      || '#7c5ce7',
+  blockColors:  EDITOR_SETTINGS.blockColors || {},
+};
+
+// Apply block color overrides to C object (done after C is defined)
+function applyBlockColorSettings(){
+  if(!EDITOR_SETTINGS.blockColors) return;
+  Object.entries(EDITOR_SETTINGS.blockColors).forEach(([key, val]) => {
+    if(C[key] && val){ Object.assign(C[key], val); }
+  });
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────
+function Tooltip({text,children,side="top"}){
+  const [pos,setPos]=useState(null);
+  function show(e){
+    if(!text)return;
+    const r=e.currentTarget.getBoundingClientRect();
+    setPos({x:r.left+r.width/2, y:side==="top"?r.top-4:r.bottom+4});
+  }
+  return h("span",{
+    onMouseEnter:show, onMouseLeave:()=>setPos(null),
+    style:{display:"inline-flex",alignItems:"center",position:"relative"}
+  },
+    children,
+    pos&&h("div",{style:{
+      position:"fixed",left:pos.x,top:pos.y,
+      transform:side==="top"?"translate(-50%,-100%)":"translate(-50%,0%)",
+      background:"#0f172a",color:"#cbd5e1",fontSize:10,padding:"5px 9px",
+      borderRadius:7,whiteSpace:"pre-wrap",maxWidth:260,pointerEvents:"none",
+      zIndex:9999,lineHeight:1.55,border:"1px solid rgba(148,163,184,0.25)",
+      fontFamily:"'Segoe UI',monospace",boxShadow:"0 4px 16px rgba(0,0,0,0.6)",
+    }},text)
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COLOURS
+// ═══════════════════════════════════════════════════════════════
+const C = {
+  power:     {bg:"#1B9E6E",border:"#137050",dark:"#0a4a35",text:"#fff",light:"#6ee7b7",icon:"⚡"},
+  condition: {bg:"#D97706",border:"#a85c00",dark:"#6b3a00",text:"#fff",light:"#fcd34d",icon:"❓"},
+  action:    {bg:"#DC2626",border:"#991b1b",dark:"#6b0f0f",text:"#fff",light:"#fca5a5",icon:"▶"},
+  meta:      {bg:"#0891b2",border:"#0e6f8a",dark:"#064e63",text:"#fff",light:"#93c5fd",icon:"🔗"},
+  // subcat colors — used when def.subcat is set
+  bientity:  {bg:"#7c3aed",border:"#5b21b6",dark:"#3b0764",text:"#fff",light:"#ddd6fe",icon:"👥"},
+  block:     {bg:"#65a30d",border:"#4d7c0f",dark:"#365314",text:"#fff",light:"#d9f99d",icon:"🧱"},
+  item:      {bg:"#0369a1",border:"#075985",dark:"#0c4a6e",text:"#fff",light:"#bae6fd",icon:"🗡️"},
+  damage:    {bg:"#be185d",border:"#9d174d",dark:"#500724",text:"#fff",light:"#fbcfe8",icon:"💢"},
+  bientity_meta:{bg:"#6d28d9",border:"#4c1d95",dark:"#2e1065",text:"#fff",light:"#c4b5fd",icon:"👥"},
+  block_meta:{bg:"#4d7c0f",border:"#365314",dark:"#1a2e05",text:"#fff",light:"#bef264",icon:"🧱"},
+  item_meta: {bg:"#075985",border:"#0c4a6e",dark:"#082f49",text:"#fff",light:"#7dd3fc",icon:"🗡️"},
+  // entity subcats
+  entity:           {bg:"#0f766e",border:"#0d5e57",dark:"#134e4a",text:"#fff",light:"#99f6e4",icon:"🧍"},
+  // power subcats
+  power_general:  {bg:"#1B9E6E",border:"#137050",dark:"#0a4a35",text:"#fff",light:"#6ee7b7",icon:"⚡"},
+  power_action:   {bg:"#b45309",border:"#92400e",dark:"#451a03",text:"#fff",light:"#fde68a",icon:"🎯"},
+  power_modify:   {bg:"#0e7490",border:"#0c5e73",dark:"#083344",text:"#fff",light:"#67e8f9",icon:"✏️"},
+  power_prevent:  {bg:"#6b21a8",border:"#581c87",dark:"#3b0764",text:"#fff",light:"#e9d5ff",icon:"🛡"},
+};
+applyBlockColorSettings();
+
+// ═══════════════════════════════════════════════════════════════
+// DEFS HELPERS
+// ═══════════════════════════════════════════════════════════════
+const tf=(k,l,d="")=>({k,l,t:"tx",d});
+const nf=(k,l,d="0")=>({k,l,t:"tx",d});
+const sf=(k,l,d,o)=>({k,l,t:"sel",d,o});
+const inv=sf("inverted","inverted","false",["false","true"]);
+const cmp=(d=">=")=>sf("comparison","cmp",d,["<","<=",">=",">","==","!="]);
+const cto=(d="0")=>nf("compare_to","to",d);
+const op=sf("modifier_operation","op","addition",["addition","multiply_base","multiply_total"]);
+const mv=(d="1")=>nf("modifier_value","val",d);
+const cS=(l="condition",k="condition")=>({key:k,label:l,accepts:["condition","meta"],multi:false});
+const aS=(l="entity_action",k="entity_action")=>({key:k,label:l,accepts:["action","meta"],multi:false});
+const mcS=(l="conditions")=>({key:"conditions",label:l,accepts:["condition","meta"],multi:true});
+const maS=(l="actions")=>({key:"actions",label:l,accepts:["action","meta"],multi:true});
+const baS=(l="bientity_action",k="bientity_action")=>({key:k,label:l,accepts:["action"],multi:false});
+const blkS=(l="block_action",k="block_action")=>({key:k,label:l,accepts:["action"],multi:false});
+const iAS=(l="item_action",k="item_action")=>({key:k,label:l,accepts:["action"],multi:false});
+const bcS=(l="bientity_condition",k="bientity_condition")=>({key:k,label:l,accepts:["condition"],multi:false});
+const blkCS=(l="block_condition",k="block_condition")=>({key:k,label:l,accepts:["condition"],multi:false});
+const iCS=(l="item_condition",k="item_condition")=>({key:k,label:l,accepts:["condition"],multi:false});
+const dmgCS=(l="damage_condition",k="damage_condition")=>({key:k,label:l,accepts:["condition"],multi:false});
+
+// ═══════════════════════════════════════════════════════════════
+// ALL BLOCK DEFINITIONS
+// ═══════════════════════════════════════════════════════════════
+const DEFS = {
+  // ═══ ORIGIN ═══════════════════════════════════════════════════════════════
+
+  // ═══ POWERS — GENERAL ═════════════════════════════════════════════════════
+  // Attribute: uses Attributed Attribute Modifier — we flatten the modifier object
+  "Attribute":{cat:"power",subcat:"power_general",pt:"origins:attribute",fields:[
+    tf("name","name","attribute_power"),
+    tf("modifier_attribute","attribute","minecraft:generic.max_health"),
+    sf("modifier_operation","operation","addition",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","4"),
+    tf("modifier_name","modifier name","My Modifier"),
+    sf("update_health","update health","true",["true","false"]),
+  ]},
+  // NOTE: Attribute does NOT support condition — intentional
+  "Burn":{cat:"power",subcat:"power_general",pt:"origins:burn",fields:[
+    tf("name","name","burn"),
+    nf("interval","interval","20"),
+    nf("burn_duration","burn ticks","8"),
+  ],slots:[cS()]},
+  "Climbing":{cat:"power",subcat:"power_general",pt:"origins:climbing",fields:[
+    tf("name","name","climbing"),
+    sf("allow_holding_away_from_wall","allow away from wall","false",["false","true"]),
+  ],slots:[cS()]},
+  // Conditioned Attribute: same modifier structure as Attribute but WITH condition
+  "Conditioned Attribute":{cat:"power",subcat:"power_general",pt:"origins:conditioned_attribute",fields:[
+    tf("name","name","cond_attr"),
+    tf("modifier_attribute","attribute","minecraft:generic.max_health"),
+    sf("modifier_operation","operation","addition",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","4"),
+    tf("modifier_name","modifier name","Conditioned modifier"),
+    nf("tick_rate","tick rate","20"),
+    sf("update_health","update health","true",["true","false"]),
+  ],slots:[cS("condition (when active)")]},
+  // Conditioned Restrict Armor: head/chest/legs/feet take Item Condition objects
+  "Conditioned Restrict Armor":{cat:"power",subcat:"power_general",pt:"origins:conditioned_restrict_armor",fields:[
+    tf("name","name","cond_restrict"),
+    tf("head","head item_condition JSON",""),
+    tf("chest","chest item_condition JSON",""),
+    tf("legs","legs item_condition JSON",""),
+    tf("feet","feet item_condition JSON",""),
+    nf("tick_rate","tick rate","80"),
+  ],slots:[cS("condition (when restricted)")]},
+  "Cooldown":{cat:"power",subcat:"power_general",pt:"origins:cooldown",fields:[
+    tf("name","name","cooldown"),
+    nf("cooldown","ticks","100"),
+    tf("hud_render","hud render","origins:bar"),
+  ],slots:[cS()]},
+  "Damage Over Time":{cat:"power",subcat:"power_general",pt:"origins:damage_over_time",fields:[
+    tf("name","name","dot"),
+    nf("interval","interval","20"),
+    nf("onset_delay","onset delay","0"),
+    nf("damage","damage","1"),
+    tf("damage_source","source","generic"),
+  ],slots:[cS()]},
+  "Disable Regen":{cat:"power",subcat:"power_general",pt:"origins:disable_regen",fields:[
+    tf("name","name","disable_regen"),
+  ],slots:[cS()]},
+  "Effect Immunity":{cat:"power",subcat:"power_general",pt:"origins:effect_immunity",fields:[
+    tf("name","name","effect_immunity"),
+    tf("effect","effect","minecraft:poison"),
+  ],slots:[cS()]},
+  "Elytra Flight":{cat:"power",subcat:"power_general",pt:"origins:elytra_flight",fields:[
+    tf("name","name","elytra_flight"),
+    sf("render_elytra","render elytra","true",["true","false"]),
+    tf("texture_location","texture location (optional)",""),
+  ],slots:[cS()]},
+  "Entity Glow":{cat:"power",subcat:"power_general",pt:"origins:entity_glow",fields:[
+    tf("name","name","entity_glow"),
+    nf("red","r (0-1)","1.0"),
+    nf("green","g (0-1)","1.0"),
+    nf("blue","b (0-1)","1.0"),
+    sf("use_teams","use team color","true",["true","false"]),
+  ],slots:[{key:"bientity_condition",label:"bientity_condition (which entities glow)",accepts:["condition","meta"],multi:false},cS()]},
+  "Entity Group":{cat:"power",subcat:"power_general",pt:"origins:entity_group",fields:[
+    tf("name","name","entity_group"),
+    sf("group","group","illager",["default","undead","arthropod","illager","water"]),
+  ],slots:[cS()]},
+  "Exhaust (Power)":{cat:"power",subcat:"power_general",pt:"origins:exhaust",fields:[
+    tf("name","name","exhaust"),
+    nf("interval","interval","20"),
+    nf("exhaustion","exhaustion","0.1"),
+  ],slots:[cS()]},
+  "Fire Immunity":{cat:"power",subcat:"power_general",pt:"origins:fire_immunity",fields:[
+    tf("name","name","fire_immunity"),
+  ],slots:[cS()]},
+  "Fire Projectile":{cat:"power",subcat:"power_general",pt:"origins:fire_projectile",fields:[
+    tf("name","name","fire_proj"),
+    tf("entity_type","entity type","minecraft:arrow"),
+    nf("cooldown","cooldown","20"),
+    nf("speed","speed","1.5"),
+    nf("divergence","divergence","1.0"),
+    nf("count","count","1"),
+    tf("sound","sound","minecraft:entity.arrow.shoot"),
+    tf("key","key","origins:primary"),
+  ],slots:[cS()]},
+  "Creative Flight":{cat:"power",subcat:"power_general",pt:"origins:creative_flight",fields:[
+    tf("name","name","creative_flight"),
+  ],slots:[cS()]},
+  "Freeze":{cat:"power",subcat:"power_general",pt:"origins:freeze",fields:[
+    tf("name","name","freeze"),
+  ],slots:[cS()]},
+  "Ignore Water":{cat:"power",subcat:"power_general",pt:"origins:ignore_water",fields:[
+    tf("name","name","ignore_water"),
+  ],slots:[cS()]},
+  "Inventory":{cat:"power",subcat:"power_general",pt:"origins:inventory",fields:[
+    tf("name","name","inventory"),
+    sf("rows","rows","3",["1","2","3","4","5","6"]),
+    sf("drop_on_death","drop on death","false",["false","true"]),
+    sf("recoverable","recoverable","true",["true","false"]),
+  ],slots:[cS()]},
+  "Invisibility":{cat:"power",subcat:"power_general",pt:"origins:invisibility",fields:[
+    tf("name","name","invisibility"),
+    sf("render_armor","render armor","false",["false","true"]),
+  ],slots:[cS()]},
+  "Invulnerability":{cat:"power",subcat:"power_general",pt:"origins:invulnerability",fields:[
+    tf("name","name","invulnerability"),
+  ],slots:[cS()]},
+  "Item On Item":{cat:"power",subcat:"power_general",pt:"origins:item_on_item",fields:[
+    tf("name","name","item_on_item"),
+    nf("result_from_on_stack","result from on stack (count)","0"),
+    tf("result_item","result item id (optional)",""),
+    nf("result_amount","result amount","1"),
+  ],slots:[
+    aS("entity_action (on use)"),
+    {key:"using_item_action",label:"using_item_action (action on using item)",accepts:["action","meta"],multi:false},
+    {key:"on_item_action",label:"on_item_action (action on target item)",accepts:["action","meta"],multi:false},
+    {key:"result_item_action",label:"result_item_action (action on result item)",accepts:["action","meta"],multi:false},
+    cS(),
+  ]},
+  "Keep Inventory":{cat:"power",subcat:"power_general",pt:"origins:keep_inventory",fields:[
+    tf("name","name","keep_inventory"),
+  ],slots:[cS()]},
+  "Launch":{cat:"power",subcat:"power_general",pt:"origins:launch",fields:[
+    tf("name","name","launch"),
+    nf("cooldown","cooldown","20"),
+    nf("speed","speed","1.0"),
+    tf("sound","sound","minecraft:entity.firework_rocket.launch"),
+    tf("key","key","origins:primary"),
+  ],slots:[cS()]},
+  "Lava Vision":{cat:"power",subcat:"power_general",pt:"origins:lava_vision",fields:[
+    tf("name","name","lava_vision"),
+    nf("s","saturation (0-1)","0.5"),
+    nf("v","value (0-1)","0.5"),
+  ],slots:[cS()]},
+  "Model Color":{cat:"power",subcat:"power_general",pt:"origins:model_color",fields:[
+    tf("name","name","model_color"),
+    nf("red","r (0-1)","1.0"),
+    nf("green","g (0-1)","1.0"),
+    nf("blue","b (0-1)","1.0"),
+    nf("alpha","a (0-1)","1.0"),
+  ],slots:[cS()]},
+  // Multiple: sub-powers are inline named keys
+  // sub_keys is a comma-separated list of key names matching dropped sub-powers in order
+  "Multiple":{cat:"power",subcat:"power_general",pt:"origins:multiple",isMeta:true,isMultiple:true,fields:[
+    tf("name","name","multiple_power"),
+  ],slots:[{key:"subpowers",label:"sub-powers (each becomes a named key from its name field)",accepts:["power","meta"],multi:true}]},
+  "Night Vision":{cat:"power",subcat:"power_general",pt:"origins:night_vision",fields:[
+    tf("name","name","night_vision"),
+    nf("strength","strength","1.0"),
+  ],slots:[cS()]},
+  "Overlay":{cat:"power",subcat:"power_general",pt:"origins:overlay",fields:[
+    tf("name","name","overlay"),
+    tf("texture","texture path","namespace:textures/misc/overlay.png"),
+    nf("red","r (0-1)","1.0"),
+    nf("green","g (0-1)","1.0"),
+    nf("blue","b (0-1)","1.0"),
+    nf("alpha","a (0-1)","1.0"),
+    sf("draw_mode","draw mode","default",["default","merge"]),
+    sf("view_mode","view mode","first_and_third_person",["first_and_third_person","third_person_only","first_person_only"]),
+  ],slots:[cS()]},
+  "Particle":{cat:"power",subcat:"power_general",pt:"origins:particle",fields:[
+    tf("name","name","particle"),
+    tf("particle","particle type","minecraft:smoke"),
+    nf("frequency","frequency","4"),
+  ],slots:[cS()]},
+  "Phasing":{cat:"power",subcat:"power_general",pt:"origins:phasing",fields:[
+    tf("name","name","phasing"),
+    sf("blacklist","blacklist mode","false",["false","true"]),
+    sf("render_type","render type","blindness",["blindness","remove_all"]),
+    nf("phase_down_condition_distance","phase down dist","0.2"),
+  ],slots:[cS()]},
+  "Recipe":{cat:"power",subcat:"power_general",pt:"origins:recipe",fields:[
+    tf("name","name","recipe"),
+    tf("recipe","recipe id","custom:my_recipe"),
+  ],slots:[cS()]},
+  "Replace Loot Table":{cat:"power",subcat:"power_general",pt:"origins:replace_loot_table",fields:[
+    tf("name","name","replace_loot_table"),
+    tf("replace_expression","regex (key)","minecraft:blocks/.*_ore"),
+    tf("replace_with","replace with (value)","custom:double_drops"),
+  ],slots:[cS()]},
+  "Resource":{cat:"power",subcat:"power_general",pt:"origins:resource",fields:[
+    tf("name","name","resource"),
+    nf("min","min","0"),
+    nf("max","max","100"),
+    nf("start_value","start value","100"),
+    tf("hud_render","hud render","origins:bar"),
+  ],slots:[cS()]},
+  // Restrict Armor: head/chest/legs/feet are Item Condition Type objects
+  "Restrict Armor":{cat:"power",subcat:"power_general",pt:"origins:restrict_armor",fields:[
+    tf("name","name","restrict_armor"),
+    tf("head","head item_condition JSON",""),
+    tf("chest","chest item_condition JSON",""),
+    tf("legs","legs item_condition JSON",""),
+    tf("feet","feet item_condition JSON",""),
+  ]},
+  "Self Glow":{cat:"power",subcat:"power_general",pt:"origins:self_glow",fields:[
+    tf("name","name","self_glow"),
+    nf("red","r (0-1)","1.0"),
+    nf("green","g (0-1)","1.0"),
+    nf("blue","b (0-1)","1.0"),
+  ],slots:[cS()]},
+  "Shader":{cat:"power",subcat:"power_general",pt:"origins:shader",fields:[
+    tf("name","name","shader"),
+    tf("shader","shader path","minecraft:shaders/post/blur.json"),
+  ],slots:[cS()]},
+  "Shaking":{cat:"power",subcat:"power_general",pt:"origins:shaking",fields:[
+    tf("name","name","shaking"),
+  ],slots:[cS()]},
+  "Simple":{cat:"power",subcat:"power_general",pt:"origins:simple",fields:[
+    tf("name","name","simple"),
+    tf("description","description",""),
+  ],slots:[cS()]},
+  // Stacking Status Effect: effect/effects are Status Effect Instance objects
+  "Stacking Status Effect":{cat:"power",subcat:"power_general",pt:"origins:stacking_status_effect",fields:[
+    tf("name","name","stacking_effect"),
+    nf("min_stacks","min stacks","0"),
+    nf("max_stacks","max stacks","5"),
+    nf("duration_per_stack","duration / stack","20"),
+    nf("tick_rate","tick rate","10"),
+    tf("effect_id","effect id","minecraft:speed"),
+    nf("effect_amplifier","effect amplifier","0"),
+    sf("effect_ambient","effect ambient","true",["true","false"]),
+    sf("effect_show_particles","show particles","false",["false","true"]),
+  ],slots:[cS()]},
+  // Starting Equipment: stack/stacks are Positioned Item Stack objects
+  "Starting Equipment":{cat:"power",subcat:"power_general",pt:"origins:starting_equipment",fields:[
+    tf("name","name","starting_equip"),
+    tf("stack_item","item id","minecraft:iron_sword"),
+    nf("stack_amount","count","1"),
+    nf("stack_slot","slot (int, optional)",""),
+    tf("stack_tag","nbt tag (optional)",""),
+    sf("recurrent","recurrent (on respawn)","false",["false","true"]),
+  ],slots:[cS()]},
+  "Status Bar Texture":{cat:"power",subcat:"power_general",pt:"origins:status_bar_texture",fields:[
+    tf("name","name","status_bar"),
+    tf("texture","texture path","namespace:textures/gui/icons.png"),
+  ],slots:[cS()]},
+  "Swimming":{cat:"power",subcat:"power_general",pt:"origins:swimming",fields:[
+    tf("name","name","swimming"),
+  ],slots:[cS()]},
+  "Toggle":{cat:"power",subcat:"power_general",pt:"origins:toggle",fields:[
+    tf("name","name","toggle"),
+    sf("active_by_default","active by default","true",["true","false"]),
+    tf("key","key","origins:primary"),
+    sf("retain_state","retain state","false",["false","true"]),
+  ],slots:[cS()]},
+  "Toggle Night Vision":{cat:"power",subcat:"power_general",pt:"origins:toggle_night_vision",fields:[
+    tf("name","name","toggle_nv"),
+    nf("strength","strength","1.0"),
+    tf("key","key","origins:primary"),
+  ],slots:[cS()]},
+  "Tooltip":{cat:"power",subcat:"power_general",pt:"origins:tooltip",fields:[
+    tf("name","name","tooltip"),
+    tf("item_condition","item condition (JSON)",""),
+  ],slots:[cS()]},
+  "Walk On Fluid":{cat:"power",subcat:"power_general",pt:"origins:walk_on_fluid",fields:[
+    tf("name","name","walk_on_fluid"),
+    tf("fluid_tag","fluid tag","minecraft:water"),
+  ],slots:[cS()]},
+
+  "Edible Item":{cat:"power",subcat:"power_general",pt:"origins:edible_item",fields:[
+    tf("name","name","edible_item"),
+    nf("food_hunger","hunger (shanks)","4"),
+    nf("food_saturation","saturation modifier","0.3"),
+    sf("food_meat","is meat","false",["false","true"]),
+    sf("food_snack","is snack (fast eat)","false",["false","true"]),
+    sf("use_action","use action","eat",["eat","drink"]),
+    tf("result_item","result item id (optional)",""),
+    nf("result_amount","result amount","1"),
+  ],slots:[{key:"item_condition",label:"item_condition (which items become edible)",accepts:["condition","meta"],multi:false},cS()]},
+  "Entity Set":{cat:"power",subcat:"power_general",pt:"origins:entity_set",fields:[
+    tf("name","name","entity_set"),
+  ],slots:[{key:"action_on_add",label:"bientity_action (on entity added to set)",accepts:["action","meta"],multi:false},{key:"action_on_remove",label:"bientity_action (on entity removed from set)",accepts:["action","meta"],multi:false},{key:"bientity_condition",label:"bientity_condition (which entities can be added)",accepts:["condition","meta"],multi:false}]},
+  "Game Event Listener":{cat:"power",subcat:"power_general",pt:"origins:game_event_listener",fields:[
+    tf("name","name","game_event_listener"),
+    tf("event","game event","minecraft:block_place"),
+    nf("range","range (blocks)","16"),
+  ],slots:[aS("entity_action (on event heard)"),cS()]},
+  "Grounded":{cat:"power",subcat:"power_general",pt:"origins:grounded",fields:[
+    tf("name","name","grounded"),
+  ],slots:[cS()]},
+
+  // ═══ POWERS — ACTION ══════════════════════════════════════════════════════
+  "Action On Being Used":{cat:"power",subcat:"power_action",pt:"origins:action_on_being_used",fields:[
+    tf("name","name","on_being_used"),
+    sf("hands","hands","[main_hand, off_hand]",["[main_hand, off_hand]","[main_hand]","[off_hand]"]),
+    sf("action_result","action result","success",["success","consume","pass","fail"]),
+  ],slots:[{key:"bientity_action",label:"bientity_action (actor=user, target=self)",accepts:["action","meta"],multi:false},cS()]},
+  "Action On Block Break":{cat:"power",subcat:"power_action",pt:"origins:action_on_block_break",fields:[
+    tf("name","name","on_break"),
+    sf("only_when_harvested","only when harvested","true",["true","false"]),
+  ],slots:[aS("entity_action (on break)"),{key:"block_action",label:"block_action (on broken block)",accepts:["action","meta"],multi:false},{key:"block_condition",label:"block_condition (which blocks)",accepts:["condition","meta"],multi:false},cS()]},
+  "Action On Block Use":{cat:"power",subcat:"power_action",pt:"origins:action_on_block_use",fields:[
+    tf("name","name","on_block_use"),
+    sf("hands","hands","[main_hand, off_hand]",["[main_hand, off_hand]","[main_hand]","[off_hand]"]),
+    sf("action_result","action result","success",["success","consume","pass","fail"]),
+  ],slots:[aS("entity_action (on use)"),{key:"block_action",label:"block_action (on used block)",accepts:["action","meta"],multi:false},{key:"item_action",label:"item_action (on held item)",accepts:["action","meta"],multi:false},{key:"block_condition",label:"block_condition (which blocks)",accepts:["condition","meta"],multi:false},cS()]},
+  "Action On Callback":{cat:"power",subcat:"power_action",pt:"origins:action_on_callback",fields:[
+    tf("name","name","on_callback"),
+    sf("execute_chosen_when_orb","exec when orb (on origin select)","true",["true","false"]),
+  ],slots:[
+    {key:"entity_action_chosen",label:"entity_action_chosen (when origin chosen on all layers)",accepts:["action","meta"],multi:false},
+    {key:"entity_action_gained",label:"entity_action_gained (permanently gained — first time added)",accepts:["action","meta"],multi:false},
+    {key:"entity_action_lost",label:"entity_action_lost (permanently lost — origin changed/removed)",accepts:["action","meta"],multi:false},
+    {key:"entity_action_added",label:"entity_action_added (power added, e.g. join world)",accepts:["action","meta"],multi:false},
+    {key:"entity_action_removed",label:"entity_action_removed (power removed, e.g. leave world or death)",accepts:["action","meta"],multi:false},
+    {key:"entity_action_respawned",label:"entity_action_respawned (after respawning, after entity_action_removed)",accepts:["action","meta"],multi:false},cS()
+  ]},
+  "Action On Entity Use":{cat:"power",subcat:"power_action",pt:"origins:action_on_entity_use",fields:[
+    tf("name","name","on_entity_use"),
+    sf("hands","hands","[main_hand, off_hand]",["[main_hand, off_hand]","[main_hand]","[off_hand]"]),
+    sf("action_result","action result","success",["success","consume","pass","fail"]),
+  ],slots:[{key:"bientity_action",label:"bientity_action (actor=self, target=clicked entity)",accepts:["action","meta"],multi:false},cS()]},
+  "Action On Hit":{cat:"power",subcat:"power_action",pt:"origins:action_on_hit",fields:[
+    tf("name","name","on_hit"),
+    nf("cooldown","cooldown","1"),
+  ],slots:[
+    {key:"bientity_action",label:"bientity_action (actor=self, target=hit entity) [REQUIRED]",accepts:["action","meta"],multi:false},
+    {key:"bientity_condition",label:"bientity_condition (actor=self, target=hit entity)",accepts:["condition","meta"],multi:false},
+    {key:"damage_condition",label:"damage_condition (type of damage dealt)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Action On Item Use":{cat:"power",subcat:"power_action",pt:"origins:action_on_item_use",fields:[
+    tf("name","name","on_item_use"),
+  ],slots:[
+    aS("entity_action (on use)"),
+    {key:"item_action",label:"item_action (on the remaining item after use)",accepts:["action","meta"],multi:false},
+    {key:"item_condition",label:"item_condition (which items trigger this, checked before use)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Action On Land":{cat:"power",subcat:"power_action",pt:"origins:action_on_land",fields:[
+    tf("name","name","on_land"),
+    nf("fall_distance","min fall distance","0"),
+  ],slots:[aS("entity_action (on land) [REQUIRED]"),cS()]},
+  "Action On Wake Up":{cat:"power",subcat:"power_action",pt:"origins:action_on_wake_up",fields:[
+    tf("name","name","on_wake"),
+  ],slots:[aS("entity_action (on wake)"),{key:"block_condition",label:"block_condition (which beds trigger it)",accepts:["condition","meta"],multi:false}]},
+  "Action Over Time":{cat:"power",subcat:"power_action",pt:"origins:action_over_time",fields:[
+    tf("name","name","over_time"),
+    nf("interval","interval","20"),
+  ],slots:[
+    aS("entity_action (each interval)"),
+    {key:"rising_action",label:"rising_action (when resource increases)",accepts:["action","meta"],multi:false},
+    {key:"falling_action",label:"falling_action (when resource decreases)",accepts:["action","meta"],multi:false},
+    cS(),
+  ]},
+  "Action When Damage Taken":{cat:"power",subcat:"power_action",pt:"origins:action_when_damage_taken",fields:[
+    tf("name","name","when_damage_taken"),
+    nf("cooldown","cooldown","20"),
+    nf("threshold","threshold","0"),
+  ],slots:[
+    aS("entity_action (when taking damage) [REQUIRED]"),
+    {key:"damage_condition",label:"damage_condition (type of damage received)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Action When Hit":{cat:"power",subcat:"power_action",pt:"origins:action_when_hit",fields:[
+    tf("name","name","when_hit"),
+    nf("cooldown","cooldown","20"),
+    nf("threshold","threshold","0"),
+  ],slots:[
+    aS("entity_action (executed on self when hit)"),
+    {key:"bientity_action",label:"bientity_action (actor=attacker, target=self)",accepts:["action","meta"],multi:false},
+    {key:"damage_condition",label:"damage_condition (type of damage received)",accepts:["condition","meta"],multi:false},
+    {key:"bientity_condition",label:"bientity_condition (actor=attacker, target=self)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Active Self":{cat:"power",subcat:"power_action",pt:"origins:active_self",fields:[
+    tf("name","name","active_ability"),
+    nf("cooldown","cooldown","1"),
+    tf("key","key","key.origins.primary_active"),
+  ],slots:[aS("entity_action (on use) [REQUIRED]"),cS()]},
+  "Attacker Action When Hit":{cat:"power",subcat:"power_action",pt:"origins:attacker_action_when_hit",fields:[
+    tf("name","name","attacker_act_when_hit"),
+    nf("cooldown","cooldown","20"),
+  ],slots:[
+    aS("entity_action (executed on the attacker) [REQUIRED]","entity_action"),
+    {key:"damage_condition",label:"damage_condition (type of damage from attacker)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Self Action On Hit":{cat:"power",subcat:"power_action",pt:"origins:self_action_on_hit",fields:[
+    tf("name","name","self_act_on_hit"),
+    nf("cooldown","cooldown","1"),
+  ],slots:[
+    aS("entity_action (executed on self when hitting) [REQUIRED]"),
+    {key:"damage_condition",label:"damage_condition (type of damage dealt)",accepts:["condition","meta"],multi:false},
+    {key:"target_condition",label:"target_condition (entity condition on hit target)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Self Action On Kill":{cat:"power",subcat:"power_action",pt:"origins:self_action_on_kill",fields:[
+    tf("name","name","self_act_on_kill"),
+    nf("cooldown","cooldown","1"),
+  ],slots:[
+    aS("entity_action (executed on self when killing) [REQUIRED]"),
+    {key:"damage_condition",label:"damage_condition (type of damage dealt)",accepts:["condition","meta"],multi:false},
+    {key:"target_condition",label:"target_condition (entity condition on killed entity)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Self Action When Hit":{cat:"power",subcat:"power_action",pt:"origins:self_action_when_hit",fields:[
+    tf("name","name","self_act_when_hit"),
+    nf("cooldown","cooldown","20"),
+  ],slots:[
+    aS("entity_action (executed on self when taking damage) [REQUIRED]"),
+    {key:"damage_condition",label:"damage_condition (type of damage received)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Target Action On Hit":{cat:"power",subcat:"power_action",pt:"origins:target_action_on_hit",fields:[
+    tf("name","name","target_act_on_hit"),
+    nf("cooldown","cooldown","1"),
+  ],slots:[
+    aS("entity_action (executed on the hit entity) [REQUIRED]","entity_action"),
+    {key:"damage_condition",label:"damage_condition (type of damage dealt)",accepts:["condition","meta"],multi:false},
+    {key:"target_condition",label:"target_condition (entity condition on hit target)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+
+  "Action On Block Place":{cat:"power",subcat:"power_action",pt:"origins:action_on_block_place",fields:[
+    tf("name","name","on_block_place"),
+    sf("directions","directions","[up]",["[up]","[down]","[north]","[south]","[east]","[west]","[up, down, north, south, east, west]"]),
+  ],slots:[aS("entity_action (on place)"),{key:"block_action",label:"block_action (on placed block - place_to_action)",accepts:["action","meta"],multi:false},{key:"place_on_condition",label:"block_condition (block placed on - place_on_condition)",accepts:["condition","meta"],multi:false},{key:"place_to_condition",label:"block_condition (block position - place_to_condition)",accepts:["condition","meta"],multi:false},{key:"item_condition",label:"item_condition (which items trigger)",accepts:["condition","meta"],multi:false},cS()]},
+  "Action On Death":{cat:"power",subcat:"power_action",pt:"origins:action_on_death",fields:[
+    tf("name","name","on_death"),
+  ],slots:[{key:"entity_action",label:"entity_action (on self death)",accepts:["action","meta"],multi:false},{key:"bientity_action",label:"bientity_action (actor=killer, target=self)",accepts:["action","meta"],multi:false},{key:"damage_condition",label:"damage_condition (which damage kills)",accepts:["condition","meta"],multi:false},cS()]},
+  "Action On Item Pickup":{cat:"power",subcat:"power_action",pt:"origins:action_on_item_pickup",fields:[
+    tf("name","name","on_item_pickup"),
+    nf("priority","priority","0"),
+  ],slots:[{key:"bientity_action",label:"bientity_action (actor=thrower, target=self)",accepts:["action","meta"],multi:false},{key:"item_action",label:"item_action (on picked up item)",accepts:["action","meta"],multi:false},{key:"bientity_condition",label:"bientity_condition (actor=thrower, target=self)",accepts:["condition","meta"],multi:false},{key:"item_condition",label:"item_condition (which items)",accepts:["condition","meta"],multi:false},cS()]},
+  // ═══ POWERS — MODIFY ══════════════════════════════════════════════════════
+  "Attribute Modify Transfer":{cat:"power",subcat:"power_general",pt:"origins:attribute_modify_transfer",fields:[
+    tf("name","name","attr_mod_transfer"),
+    tf("attribute","target attribute","minecraft:generic.attack_damage"),
+    tf("modifier_attribute","source attribute","minecraft:generic.max_health"),
+    sf("modifier_operation","operation","addition",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","1.0"),
+  ],slots:[cS()]},
+  "Modify Air Speed":{cat:"power",subcat:"power_modify",pt:"origins:modify_air_speed",fields:[
+    tf("name","name","mod_air_speed"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","1.5"),
+  ],slots:[cS()]},
+  "Modify Attribute":{cat:"power",subcat:"power_modify",pt:"origins:modify_attribute",fields:[
+    tf("name","name","mod_attribute"),
+    tf("modifier_attribute","attribute","minecraft:generic.max_health"),
+    sf("modifier_operation","operation","addition",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","4"),
+    tf("modifier_name","modifier name","My Modifier"),
+  ],slots:[cS()]},
+  "Modify Block Render":{cat:"power",subcat:"power_modify",pt:"origins:modify_block_render",fields:[
+    tf("name","name","mod_block_render"),
+    tf("block","block to replace","minecraft:stone"),
+    tf("replacement_block","render as","minecraft:glass"),
+  ],slots:[
+    {key:"block_condition",label:"block_condition (filter which blocks get re-rendered)",accepts:["condition","meta"],multi:false},
+  ]},
+  "Modify Break Speed":{cat:"power",subcat:"power_modify",pt:"origins:modify_break_speed",fields:[
+    tf("name","name","mod_break_speed"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","2.0"),
+  ],slots:[
+    {key:"block_condition",label:"block_condition (which blocks get the modified speed)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Modify Camera Submersion":{cat:"power",subcat:"power_modify",pt:"origins:modify_camera_submersion",fields:[
+    tf("name","name","mod_cam_submersion"),
+    tf("fluid","fluid type","minecraft:water"),
+  ],slots:[cS()]},
+  "Modify Crafting":{cat:"power",subcat:"power_modify",pt:"origins:modify_crafting",fields:[
+    tf("name","name","mod_crafting"),
+    tf("recipe","recipe id (optional)",""),
+    tf("result_item","result item id (result stack item)","minecraft:diamond"),
+    nf("result_amount","result amount","1"),
+  ],slots:[
+    {key:"item_condition",label:"item_condition (checked on result item before replacing)",accepts:["condition","meta"],multi:false},
+    {key:"item_action",label:"item_action (applied to result item)",accepts:["action","meta"],multi:false},
+    aS("entity_action (on player crafting)"),
+    {key:"block_action",label:"block_action (on crafting table block)",accepts:["action","meta"],multi:false},
+    cS(),
+  ]},
+  "Modify Damage Dealt":{cat:"power",subcat:"power_modify",pt:"origins:modify_damage_dealt",fields:[
+    tf("name","name","mod_dmg_dealt"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","1.5"),
+  ],slots:[
+    {key:"bientity_action",label:"bientity_action (actor=self, target=hit entity — on modifier applied)",accepts:["action","meta"],multi:false},
+    {key:"bientity_condition",label:"bientity_condition (actor=self, target=hit entity)",accepts:["condition","meta"],multi:false},
+    {key:"damage_condition",label:"damage_condition (which damage types trigger modifier)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Modify Damage Taken":{cat:"power",subcat:"power_modify",pt:"origins:modify_damage_taken",fields:[
+    tf("name","name","mod_dmg_taken"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","0.5"),
+  ],slots:[
+    {key:"bientity_action",label:"bientity_action (actor=attacker, target=self — on modifier applied)",accepts:["action","meta"],multi:false},
+    {key:"self_action",label:"self_action (entity_action on self — on modifier applied)",accepts:["action","meta"],multi:false},
+    {key:"attacker_action",label:"attacker_action (entity_action on attacker — on modifier applied)",accepts:["action","meta"],multi:false},
+    {key:"bientity_condition",label:"bientity_condition (actor=attacker, target=self)",accepts:["condition","meta"],multi:false},
+    {key:"damage_condition",label:"damage_condition (which damage types trigger modifier)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Modify Exhaustion":{cat:"power",subcat:"power_modify",pt:"origins:modify_exhaustion",fields:[
+    tf("name","name","mod_exhaustion"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","0.5"),
+  ],slots:[cS()]},
+  "Modify Falling":{cat:"power",subcat:"power_modify",pt:"origins:modify_falling",fields:[
+    tf("name","name","mod_falling"),
+    nf("velocity","velocity (default 0.08)","0.08"),
+    sf("take_fall_damage","take fall damage","true",["true","false"]),
+  ],slots:[cS()]},
+  "Modify Fluid Render":{cat:"power",subcat:"power_modify",pt:"origins:modify_fluid_render",fields:[
+    tf("name","name","mod_fluid_render"),
+    tf("fluid","replacement fluid id","minecraft:lava"),
+  ],slots:[
+    {key:"block_condition",label:"block_condition (which fluid blocks to replace render of)",accepts:["condition","meta"],multi:false},
+  ]},
+  "Modify Food":{cat:"power",subcat:"power_modify",pt:"origins:modify_food",fields:[
+    tf("name","name","mod_food"),
+    sf("food_mod_op","food modifier op","addition",["addition","multiply_base","multiply_total"]),
+    nf("food_mod_val","food modifier value","2"),
+    sf("sat_mod_op","saturation modifier op","addition",["addition","multiply_base","multiply_total"]),
+    nf("sat_mod_val","saturation modifier value","1"),
+  ],slots:[
+    {key:"item_condition",label:"item_condition (which foods this applies to)",accepts:["condition","meta"],multi:false},
+    aS("entity_action (on eating)"),
+    cS(),
+  ]},
+  "Modify Grindstone":{cat:"power",subcat:"power_modify",pt:"origins:modify_grindstone",fields:[
+    tf("name","name","mod_grindstone"),
+    sf("result_type","result type","unchanged",["unchanged","specified","from_top","from_bottom"]),
+    tf("result_stack_item","result item id (if result_type=specified)",""),
+    nf("result_stack_amount","result amount","1"),
+    sf("xp_mod_op","xp modifier op","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("xp_mod_val","xp modifier value","1.0"),
+  ],slots:[
+    aS("entity_action (on player taking result)"),
+    {key:"block_action",label:"block_action (on the grindstone block)",accepts:["action","meta"],multi:false},
+    {key:"item_action",label:"item_action (on result item)",accepts:["action","meta"],multi:false},
+    {key:"item_action_after_grinding",label:"item_action_after_grinding (on result after grinding)",accepts:["action","meta"],multi:false},
+    {key:"top_condition",label:"top_condition (item_condition on top input slot)",accepts:["condition","meta"],multi:false},
+    {key:"bottom_condition",label:"bottom_condition (item_condition on bottom input slot)",accepts:["condition","meta"],multi:false},
+    {key:"output_condition",label:"output_condition (item_condition on output slot)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Modify Harvest":{cat:"power",subcat:"power_modify",pt:"origins:modify_harvest",fields:[
+    tf("name","name","mod_harvest"),
+    sf("allow","allow harvest","true",["true","false"]),
+  ],slots:[
+    {key:"block_condition",label:"block_condition (which blocks this applies to)",accepts:["condition","meta"],multi:false},
+    {key:"item_condition",label:"item_condition (which tools this applies to)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Modify Healing":{cat:"power",subcat:"power_modify",pt:"origins:modify_healing",fields:[
+    tf("name","name","mod_healing"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","2.0"),
+  ],slots:[cS()]},
+  "Modify Insomnia Ticks":{cat:"power",subcat:"power_modify",pt:"origins:modify_insomnia_ticks",fields:[
+    tf("name","name","mod_insomnia"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","0.0"),
+  ],slots:[cS()]},
+  "Modify Jump":{cat:"power",subcat:"power_modify",pt:"origins:modify_jump",fields:[
+    tf("name","name","mod_jump"),
+    sf("modifier_operation","operation","addition",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","0.5"),
+  ],slots:[cS()]},
+  "Modify Lava Speed":{cat:"power",subcat:"power_modify",pt:"origins:modify_lava_speed",fields:[
+    tf("name","name","mod_lava_speed"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","2.0"),
+  ],slots:[cS()]},
+  "Modify Player Spawn":{cat:"power",subcat:"power_modify",pt:"origins:modify_player_spawn",fields:[
+    tf("name","name","mod_spawn"),
+    tf("dimension","dimension (required)","minecraft:the_nether"),
+    tf("biome","biome (optional)",""),
+    tf("structure","structure (optional)",""),
+    sf("spawn_strategy","spawn strategy","default",["default","center"]),
+    nf("dimension_distance_multiplier","dim distance multiplier (e.g. 0.125 for nether)",""),
+  ],slots:[cS()]},
+  "Modify Projectile Damage":{cat:"power",subcat:"power_modify",pt:"origins:modify_projectile_damage",fields:[
+    tf("name","name","mod_proj_dmg"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","1.5"),
+  ],slots:[cS()]},
+  "Modify Slipperiness":{cat:"power",subcat:"power_modify",pt:"origins:modify_slipperiness",fields:[
+    tf("name","name","mod_slipperiness"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","1.5"),
+  ],slots:[cS()]},
+  "Modify Status Effect Amplifier":{cat:"power",subcat:"power_modify",pt:"origins:modify_status_effect_amplifier",fields:[
+    tf("name","name","mod_effect_amp"),
+    tf("status_effect","status effect id (optional, blank=all)","minecraft:speed"),
+    sf("modifier_operation","operation","addition",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","1"),
+  ],slots:[cS()]},
+  "Modify Status Effect Duration":{cat:"power",subcat:"power_modify",pt:"origins:modify_status_effect_duration",fields:[
+    tf("name","name","mod_effect_dur"),
+    tf("status_effect","status effect id (optional, blank=all)","minecraft:speed"),
+    sf("modifier_operation","operation","multiply_base",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","0.25"),
+  ],slots:[cS()]},
+  "Modify Swim Speed":{cat:"power",subcat:"power_modify",pt:"origins:modify_swim_speed",fields:[
+    tf("name","name","mod_swim_speed"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","2.0"),
+  ],slots:[cS()]},
+  "Modify Velocity":{cat:"power",subcat:"power_modify",pt:"origins:modify_velocity",fields:[
+    tf("name","name","mod_velocity"),
+    tf("axes","axes (comma-separated: x, y, z)","x, y, z"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","-2"),
+  ],slots:[cS()]},
+  "Modify XP Gain":{cat:"power",subcat:"power_modify",pt:"origins:modify_xp_gain",fields:[
+    tf("name","name","mod_xp"),
+    sf("modifier_operation","operation","multiply_total",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","2.0"),
+  ],slots:[cS()]},
+
+  "Modify Enchantment Level":{cat:"power",subcat:"power_modify",pt:"origins:modify_enchantment_level",fields:[
+    tf("name","name","mod_enchant_level"),
+    tf("enchantment","enchantment id","minecraft:sharpness"),
+    sf("modifier_operation","operation","addition",["addition","multiply_base","multiply_total"]),
+    nf("modifier_value","value","1"),
+  ],slots:[{key:"item_condition",label:"item_condition (which items)",accepts:["condition","meta"],multi:false},cS()]},
+  // ═══ POWERS — PREVENT ═════════════════════════════════════════════════════
+  "Prevent Being Used":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_being_used",fields:[
+    tf("name","name","prev_being_used"),
+    sf("hands","hands","[main_hand, off_hand]",["[main_hand, off_hand]","[main_hand]","[off_hand]"]),
+    tf("result_stack_item","result item given to actor (optional)",""),
+    nf("result_stack_amount","result amount","1"),
+  ],slots:[
+    {key:"bientity_action",label:"bientity_action (actor=user, target=self — on prevented)",accepts:["action","meta"],multi:false},
+    {key:"held_item_action",label:"held_item_action (item action on actor's held item)",accepts:["action","meta"],multi:false},
+    {key:"result_item_action",label:"result_item_action (item action on result item given to actor)",accepts:["action","meta"],multi:false},
+    {key:"bientity_condition",label:"bientity_condition (actor=user, target=self)",accepts:["condition","meta"],multi:false},
+    {key:"item_condition",label:"item_condition (on actor's held item)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Prevent Block Selection":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_block_selection",fields:[
+    tf("name","name","prev_block_sel"),
+  ],slots:[
+    {key:"block_condition",label:"block_condition (which blocks are unselectable)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Prevent Block Use":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_block_use",fields:[
+    tf("name","name","prev_block_use"),
+  ],slots:[
+    {key:"block_condition",label:"block_condition (which blocks cannot be used)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Prevent Death":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_death",fields:[
+    tf("name","name","prevent_death"),
+  ],slots:[
+    aS("entity_action (executed on entity when death is prevented)"),
+    {key:"damage_condition",label:"damage_condition (which damage types are prevented)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Prevent Elytra Flight":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_elytra_flight",fields:[
+    tf("name","name","prev_elytra_flight"),
+  ],slots:[
+    aS("entity_action (on prevented)"),
+    cS(),
+  ]},
+  "Prevent Entity Collision":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_entity_collision",fields:[
+    tf("name","name","prev_entity_collision"),
+  ],slots:[{key:"bientity_condition",label:"bientity_condition (which entities)",accepts:["condition","meta"],multi:false},cS()]},
+  "Prevent Entity Render":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_entity_render",fields:[
+    tf("name","name","prev_render"),
+  ],slots:[
+    {key:"entity_condition",label:"entity_condition (which entities are hidden)",accepts:["condition","meta"],multi:false},
+    {key:"bientity_condition",label:"bientity_condition (actor=self, target=hidden entity)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Prevent Entity Use":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_entity_use",fields:[
+    tf("name","name","prev_entity_use"),
+    sf("hands","hands","[main_hand, off_hand]",["[main_hand, off_hand]","[main_hand]","[off_hand]"]),
+    tf("result_stack_item","result item given to actor (optional)",""),
+    nf("result_stack_amount","result amount","1"),
+  ],slots:[
+    {key:"bientity_action",label:"bientity_action (actor=self, target=used entity — on prevented)",accepts:["action","meta"],multi:false},
+    {key:"held_item_action",label:"held_item_action (item action on actor's held item)",accepts:["action","meta"],multi:false},
+    {key:"result_item_action",label:"result_item_action (item action on result item given to actor)",accepts:["action","meta"],multi:false},
+    {key:"bientity_condition",label:"bientity_condition (actor=self, target=used entity)",accepts:["condition","meta"],multi:false},
+    {key:"item_condition",label:"item_condition (on actor's held item)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Prevent Feature Render":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_feature_render",fields:[
+    tf("name","name","prev_feature_render"),
+    sf("feature","feature renderer (single)","armor",["armor","held_item","elytra","head","cape",""]),
+    tf("features","features (multiple, comma-separated)",""),
+  ],slots:[cS()]},
+  "Prevent Game Event":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_game_event",fields:[
+    tf("name","name","prev_game_event"),
+    tf("event","game event id","minecraft:hit_ground"),
+    tf("tag","game event tag (optional, alt to event)",""),
+  ],slots:[aS("entity_action (on prevented)"),cS()]},
+  "Prevent Item Use":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_item_use",fields:[
+    tf("name","name","prev_item_use"),
+  ],slots:[
+    {key:"item_condition",label:"item_condition (which items cannot be used)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Prevent Sleep":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_sleep",fields:[
+    tf("name","name","prevent_sleep"),
+    tf("message","message (shown when prevented)","You cannot sleep!"),
+    sf("set_spawn_point","set spawn point","true",["true","false"]),
+    nf("priority","priority","0"),
+  ],slots:[
+    {key:"block_condition",label:"block_condition (which beds trigger this prevention)",accepts:["condition","meta"],multi:false},
+    cS(),
+  ]},
+  "Prevent Sprinting":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_sprinting",fields:[
+    tf("name","name","prev_sprinting"),
+  ],slots:[cS()]},
+
+  // ═══ CONDITIONS ═══════════════════════════════════════════════════════════
+  "Ability":{cat:"condition",subcat:"entity",ct:"origins:ability",fields:[
+    sf("ability","ability","may_fly",["may_fly","instabuild","invulnerable","may_build","flying"]),inv]},
+  "Advancement":{cat:"condition",subcat:"entity",ct:"origins:advancement",fields:[
+    tf("advancement","advancement","minecraft:story/mine_stone"),inv]},
+  "Air":{cat:"condition",subcat:"entity",ct:"origins:air",fields:[cmp(">="),cto("100"),inv]},
+  "Attribute (Cond)":{cat:"condition",subcat:"entity",ct:"origins:attribute",fields:[
+    tf("attribute","attribute","minecraft:generic.max_health"),cmp(">="),cto("20"),inv]},
+  "Biome":{cat:"condition",subcat:"entity",ct:"origins:biome",fields:[
+    tf("biome","single biome id (optional)","minecraft:plains"),
+    tf("biomes","multiple biome ids (comma-sep, optional)",""),
+    inv],
+    slots:[{key:"condition",label:"biome_condition (biome property check)",accepts:["condition","meta"],multi:false}]},
+  "Block Collision":{cat:"condition",subcat:"entity",ct:"origins:block_collision",fields:[
+    nf("offset_x","offset x","0"),nf("offset_y","offset y","0.1"),nf("offset_z","offset z","0"),inv],
+    slots:[{key:"block_condition",label:"block_condition (filter which blocks count)",accepts:["condition","meta"],multi:false}]},
+  "Block In Radius":{cat:"condition",subcat:"entity",ct:"origins:block_in_radius",fields:[
+    nf("radius","radius","5"),
+    sf("shape","shape","cube",["cube","star","sphere"]),cmp(">="),cto("1"),inv],
+    slots:[{key:"block_condition",label:"block_condition (which blocks are counted) [REQUIRED]",accepts:["condition","meta"],multi:false}]},
+  "Brightness":{cat:"condition",subcat:"entity",ct:"origins:brightness",fields:[cmp("<="),cto("0.5"),inv]},
+  "Climbing (Cond)":{cat:"condition",subcat:"entity",ct:"origins:climbing",fields:[inv]},
+  "Collided Horizontally":{cat:"condition",subcat:"entity",ct:"origins:collided_horizontally",fields:[inv]},
+  "Command (Cond)":{cat:"condition",subcat:"entity",ct:"origins:command",fields:[
+    tf("command","command",""),cmp("=="),cto("1"),inv]},
+  "Creative Flying":{cat:"condition",subcat:"entity",ct:"origins:creative_flying",fields:[inv]},
+  "Daytime":{cat:"condition",subcat:"entity",ct:"origins:daytime",fields:[inv]},
+  "Dimension":{cat:"condition",subcat:"entity",ct:"origins:dimension",fields:[
+    tf("dimension","dimension","minecraft:overworld"),inv]},
+  "Distance From Coordinates":{cat:"condition",subcat:"entity",ct:"origins:distance_from_coordinates",fields:[
+    sf("reference","reference","world_origin",["world_origin","world_spawn","spawn_point","coordinates"]),
+    nf("offset_x","offset x","0"),nf("offset_y","offset y","0"),nf("offset_z","offset z","0"),
+    sf("shape","shape","sphere",["sphere","cube","star"]),
+    sf("ignore_x","ignore x","false",["false","true"]),
+    sf("ignore_y","ignore y","false",["false","true"]),
+    sf("ignore_z","ignore z","false",["false","true"]),
+    cmp("<="),cto("128"),inv]},
+  "Elytra Flight Possible":{cat:"condition",subcat:"entity",ct:"origins:elytra_flight_possible",fields:[inv]},
+  "Enchantment":{cat:"condition",subcat:"entity",ct:"origins:enchantment",fields:[
+    tf("enchantment","enchantment","minecraft:sharpness"),
+    sf("equipment_slot","slot","mainhand",["mainhand","offhand","head","chest","legs","feet","any"]),
+    nf("min_level","min level","1"),
+    nf("max_level","max level","255"),
+    inv]},
+  "Entity Group (Cond)":{cat:"condition",subcat:"entity",ct:"origins:entity_group",fields:[
+    sf("group","group","illager",["default","undead","arthropod","illager","water"]),inv]},
+  "Entity Type":{cat:"condition",subcat:"entity",ct:"origins:entity_type",fields:[
+    tf("entity_type","entity type","minecraft:zombie"),inv]},
+  "Equipped Item":{cat:"condition",subcat:"entity",ct:"origins:equipped_item",fields:[
+    sf("equipment_slot","slot","mainhand",["mainhand","offhand","head","chest","legs","feet"]),
+    inv],
+    slots:[{key:"item_condition",label:"item_condition (check on equipped item)",accepts:["condition","meta"],multi:false}]},
+  "Exists":{cat:"condition",subcat:"entity",ct:"origins:exists",fields:[inv]},
+  "Exposed To Sky":{cat:"condition",subcat:"entity",ct:"origins:exposed_to_sky",fields:[inv]},
+  "Exposed To Sun":{cat:"condition",subcat:"entity",ct:"origins:exposed_to_sun",fields:[inv]},
+  "Fall Distance":{cat:"condition",subcat:"entity",ct:"origins:fall_distance",fields:[cmp(">="),cto("3.0"),inv]},
+  "Fall Flying":{cat:"condition",subcat:"entity",ct:"origins:fall_flying",fields:[inv]},
+  "Fluid Height":{cat:"condition",subcat:"entity",ct:"origins:fluid_height",fields:[
+    sf("fluid","fluid","water",["water","lava"]),cmp(">="),cto("0.5"),inv]},
+  "Food Level":{cat:"condition",subcat:"entity",ct:"origins:food_level",fields:[cmp("<="),cto("10"),inv]},
+  "Gamemode":{cat:"condition",subcat:"entity",ct:"origins:gamemode",fields:[
+    sf("gamemode","gamemode","survival",["survival","creative","adventure","spectator"]),inv]},
+  "Health":{cat:"condition",subcat:"entity",ct:"origins:health",fields:[cmp("<="),cto("10"),inv]},
+  "In Block":{cat:"condition",subcat:"entity",ct:"origins:in_block",fields:[tf("block","block","minecraft:water"),inv]},
+  "In Block Anywhere":{cat:"condition",subcat:"entity",ct:"origins:in_block_anywhere",fields:[
+    cmp(">="),cto("1"),inv],
+    slots:[{key:"block_condition",label:"block_condition (which blocks to check for) [REQUIRED]",accepts:["condition","meta"],multi:false}]},
+  "In Rain":{cat:"condition",subcat:"entity",ct:"origins:in_rain",fields:[inv]},
+  "In Tag":{cat:"condition",subcat:"entity",ct:"origins:in_tag",fields:[tf("tag","tag","minecraft:is_overworld"),inv]},
+  "Inventory (Cond)":{cat:"condition",subcat:"entity",ct:"origins:inventory",fields:[
+    sf("inventory_type","inventory type","inventory",["inventory","power","equipment"]),
+    sf("process_mode","process mode","stacks",["stacks","items"]),
+    tf("slot","slot (optional)",""),
+    cmp(">="),cto("1"),inv]},
+  "Invisible (Cond)":{cat:"condition",subcat:"entity",ct:"origins:invisible",fields:[inv]},
+  "Living":{cat:"condition",subcat:"entity",ct:"origins:living",fields:[inv]},
+  "Moving":{cat:"condition",subcat:"entity",ct:"origins:moving",fields:[inv]},
+  "NBT":{cat:"condition",subcat:"entity",ct:"origins:nbt",fields:[tf("nbt","nbt compound","{Health:20.0f}"),inv]},
+  "On Block":{cat:"condition",subcat:"entity",ct:"origins:on_block",fields:[tf("block","block","minecraft:grass_block"),inv]},
+  "On Fire":{cat:"condition",subcat:"entity",ct:"origins:on_fire",fields:[inv]},
+  "Origin (Cond)":{cat:"condition",subcat:"entity",ct:"origins:origin",fields:[
+    tf("origin","origin id","custom:my_origin"),
+    sf("layer","layer","origins:origin",["origins:origin"]),inv]},
+  "Passenger":{cat:"condition",subcat:"entity",ct:"origins:passenger",fields:[inv]},
+  "Passenger Recursive":{cat:"condition",subcat:"entity",ct:"origins:passenger_recursive",fields:[inv]},
+  "Power":{cat:"condition",subcat:"entity",ct:"origins:power",fields:[tf("power","power id","custom:my_power"),inv]},
+  "Power Active":{cat:"condition",subcat:"entity",ct:"origins:power_active",fields:[tf("power","power id","custom:my_power"),inv]},
+  "Predicate":{cat:"condition",subcat:"entity",ct:"origins:predicate",fields:[tf("predicate","predicate id",""),inv]},
+  "Raycast (Cond)":{cat:"condition",subcat:"entity",ct:"origins:raycast",fields:[
+    nf("distance","distance","8"),
+    sf("entity","check entities","true",["true","false"]),
+    sf("block","check blocks","true",["true","false"]),
+    sf("shape_type","shape type","visual",["visual","collider","outline","camera"]),
+    sf("fluid_handling","fluid handling","none",["none","any","source_only"]),
+    inv],
+    slots:[
+      {key:"match_bientity_condition",label:"match_bientity_condition (filter which entities can be hit)",accepts:["condition","meta"],multi:false},
+      {key:"hit_bientity_condition",label:"hit_bientity_condition (check on the entity that was hit)",accepts:["condition","meta"],multi:false},
+      {key:"hit_block_condition",label:"hit_block_condition (check on the block that was hit)",accepts:["condition","meta"],multi:false},
+    ]},
+  "Relative Health":{cat:"condition",subcat:"entity",ct:"origins:relative_health",fields:[cmp("<="),cto("0.5"),inv]},
+  "Resource (Cond)":{cat:"condition",subcat:"entity",ct:"origins:resource",fields:[
+    tf("resource","resource id","custom:my_resource"),cmp(">="),cto("50"),inv]},
+  "Riding":{cat:"condition",subcat:"entity",ct:"origins:riding",fields:[inv]},
+  "Riding Recursive":{cat:"condition",subcat:"entity",ct:"origins:riding_recursive",fields:[inv]},
+  "Riding Root":{cat:"condition",subcat:"entity",ct:"origins:riding_root",fields:[inv]},
+  "Saturation Level":{cat:"condition",subcat:"entity",ct:"origins:saturation_level",fields:[cmp(">="),cto("5"),inv]},
+  "Scoreboard":{cat:"condition",subcat:"entity",ct:"origins:scoreboard",fields:[
+    tf("objective","objective","my_score"),cmp(">="),cto("1"),inv]},
+  "Sneaking":{cat:"condition",subcat:"entity",ct:"origins:sneaking",fields:[inv]},
+  "Sprinting":{cat:"condition",subcat:"entity",ct:"origins:sprinting",fields:[inv]},
+  "Status Effect (Cond)":{cat:"condition",subcat:"entity",ct:"origins:status_effect",fields:[
+    tf("effect","effect id","minecraft:speed"),
+    nf("min_amplifier","min amplifier","0"),
+    nf("max_amplifier","max amplifier","255"),
+    nf("min_duration","min duration (ticks, -1=any)","-1"),
+    nf("max_duration","max duration (ticks)","2147483647"),
+    inv]},
+  "Submerged In":{cat:"condition",subcat:"entity",ct:"origins:submerged_in",fields:[
+    sf("fluid","fluid","water",["water","lava"]),inv]},
+  "Swimming (Cond)":{cat:"condition",subcat:"entity",ct:"origins:swimming",fields:[inv]},
+  "Tamed":{cat:"condition",subcat:"entity",ct:"origins:tamed",fields:[inv]},
+  "Time Of Day":{cat:"condition",subcat:"entity",ct:"origins:time_of_day",fields:[cmp(">="),cto("0"),inv]},
+  "Using Effective Tool":{cat:"condition",subcat:"entity",ct:"origins:using_effective_tool",fields:[inv]},
+  "Using Item":{cat:"condition",subcat:"entity",ct:"origins:using_item",fields:[inv]},
+  "XP Levels":{cat:"condition",subcat:"entity",ct:"origins:xp_levels",fields:[cmp(">="),cto("10"),inv]},
+  "XP Points":{cat:"condition",subcat:"entity",ct:"origins:xp_points",fields:[cmp(">="),cto("100"),inv]},
+
+  // ═══ ACTIONS ══════════════════════════════════════════════════════════════
+  "Add Velocity":{cat:"action",subcat:"entity",at:"origins:add_velocity",fields:[
+    nf("x","x","0"),nf("y","y","1.5"),nf("z","z","0"),
+    sf("set","set (not add)","false",["false","true"]),
+    sf("space","space","world",["world","local","local_horizontal_player_relative","local_horizontal","velocity_normalized","local_velocity","local_horizontal_velocity"]),
+    sf("client","client","true",["true","false"]),
+    sf("server","server","true",["true","false"])]},
+  "Add XP":{cat:"action",subcat:"entity",at:"origins:add_xp",fields:[
+    nf("points","xp points (optional)",""),
+    nf("levels","xp levels (optional, can be negative)","")] },
+  "Apply Effect":{cat:"action",subcat:"entity",at:"origins:apply_effect",fields:[
+    tf("effect_id","effect id","minecraft:speed"),
+    nf("effect_duration","duration (ticks)","100"),
+    nf("effect_amplifier","amplifier","0"),
+    sf("effect_is_ambient","ambient (no particles/icon)","false",["false","true"]),
+    sf("effect_show_particles","show particles","true",["true","false"]),
+    sf("effect_show_icon","show icon","true",["true","false"])]},
+  "Area Of Effect":{cat:"action",subcat:"entity",at:"origins:area_of_effect",fields:[
+    nf("radius","radius","16"),
+    sf("shape","shape","cube",["cube","star","sphere"])],
+    slots:[
+      {key:"bientity_action",label:"bientity_action (actor=self, target=entity in radius) [REQUIRED]",accepts:["action","meta"],multi:false},
+      {key:"bientity_condition",label:"bientity_condition (filter which entities are affected)",accepts:["condition","meta"],multi:false},
+    ]},
+  "Block Action At":{cat:"action",subcat:"entity",at:"origins:block_action_at",fields:[
+    nf("offset_x","offset x","0"),nf("offset_y","offset y","0"),nf("offset_z","offset z","0")],
+    slots:[
+      {key:"block_action",label:"block_action (action on the block at offset) [REQUIRED]",accepts:["action","meta"],multi:false},
+    ]},
+  "Change Resource":{cat:"action",subcat:"entity",at:"origins:change_resource",fields:[
+    tf("resource","resource id","custom:my_resource"),
+    nf("change","change","10"),
+    sf("operation","operation","add",["add","set"])]},
+  "Clear Effect":{cat:"action",subcat:"entity",at:"origins:clear_effect",fields:[
+    tf("effect","effect id (blank = all)","")]},
+  "Crafting Table":{cat:"action",subcat:"entity",at:"origins:crafting_table",fields:[]},
+  "Damage":{cat:"action",subcat:"entity",at:"origins:damage",fields:[
+    nf("amount","amount","2"),
+    tf("damage_type","damage type id (e.g. minecraft:generic)","minecraft:generic")]},
+  "Dismount":{cat:"action",subcat:"entity",at:"origins:dismount",fields:[]},
+  "Drop Inventory":{cat:"action",subcat:"entity",at:"origins:drop_inventory",fields:[
+    sf("inventory_type","inventory","inventory",["inventory","power","equipment"]),
+    tf("slot","slot (optional)",""),
+    sf("throw_randomly","throw randomly","false",["false","true"]),
+    sf("retain_ownership","retain ownership","false",["false","true"]),
+    tf("power","power id (if inventory_type=power)","")],
+    slots:[
+      {key:"item_condition",label:"item_condition (filter which items are dropped)",accepts:["condition","meta"],multi:false},
+    ]},
+  "Emit Game Event":{cat:"action",subcat:"entity",at:"origins:emit_game_event",fields:[
+    tf("event","game event","minecraft:step")]},
+  "Ender Chest":{cat:"action",subcat:"entity",at:"origins:ender_chest",fields:[]},
+  "Execute Command":{cat:"action",subcat:"entity",at:"origins:execute_command",fields:[
+    tf("command","command","say Hello!")]},
+  "Exhaust":{cat:"action",subcat:"entity",at:"origins:exhaust",fields:[
+    nf("amount","amount","0.1")]},
+  "Explode":{cat:"action",subcat:"entity",at:"origins:explode",fields:[
+    nf("power","power","3"),
+    sf("destruction_type","destruction","break",["none","break","destroy"]),
+    sf("create_fire","create fire","false",["false","true"]),
+    sf("damage_self","damage self","true",["true","false"])]},
+  "Extinguish":{cat:"action",subcat:"entity",at:"origins:extinguish",fields:[]},
+  "Feed":{cat:"action",subcat:"entity",at:"origins:feed",fields:[
+    nf("food","food","4"),
+    nf("saturation","saturation","2.0")]},
+  "Fire Projectile (Action)":{cat:"action",subcat:"entity",at:"origins:fire_projectile",fields:[
+    tf("entity_type","entity type","minecraft:arrow"),
+    nf("count","count","1"),
+    nf("speed","speed","1.5"),
+    nf("divergence","divergence","1.0"),
+    tf("tag","nbt tag",""),
+    tf("sound","sound id","minecraft:entity.arrow.shoot")]},
+  "Gain Air":{cat:"action",subcat:"entity",at:"origins:gain_air",fields:[
+    nf("amount","amount","150")]},
+  "Give":{cat:"action",subcat:"entity",at:"origins:give",fields:[
+    tf("stack_item","item id","minecraft:diamond"),
+    nf("stack_amount","count","1")]},
+  "Grant Power":{cat:"action",subcat:"entity",at:"origins:grant_power",fields:[
+    tf("power","power id","custom:my_power"),
+    tf("source","source id","custom:my_source")]},
+  "Heal":{cat:"action",subcat:"entity",at:"origins:heal",fields:[
+    nf("amount","amount","4")]},
+  "Modify Death Ticks":{cat:"action",subcat:"entity",at:"origins:modify_death_ticks",fields:[
+    nf("change","change (ticks)","5")]},
+  "Modify Inventory":{cat:"action",subcat:"entity",at:"origins:modify_inventory",fields:[
+    sf("inventory_type","inventory","inventory",["inventory","power","equipment"]),
+    sf("process_mode","process mode","stacks",["stacks","items"]),
+    tf("slot","slot (optional)",""),
+    tf("power","power id (if inventory_type=power)",""),
+    nf("limit","limit (0=unlimited)","0")],
+    slots:[
+      {key:"item_action",label:"item_action (applied to each matching item) [REQUIRED]",accepts:["action","meta"],multi:false},
+      {key:"item_condition",label:"item_condition (filter which items are modified)",accepts:["condition","meta"],multi:false},
+      {key:"entity_action",label:"entity_action (executed on entity before items are modified)",accepts:["action","meta"],multi:false},
+    ]},
+  "Modify Resource":{cat:"action",subcat:"entity",at:"origins:modify_resource",fields:[
+    tf("resource","resource id","custom:my_resource"),
+    sf("modifier_operation","modifier operation","add",["add","set","subtract","multiply","divide","mod"]),
+    nf("modifier_value","modifier value","10")]},
+  "Modify Stat":{cat:"action",subcat:"entity",at:"origins:modify_stat",fields:[
+    tf("stat","stat id","minecraft:play_time"),
+    nf("modifier","amount to add","100")]},
+  "Passenger Action":{cat:"action",subcat:"entity",at:"origins:passenger_action",fields:[
+    sf("recursive","recursive","false",["false","true"])],
+    slots:[aS("entity_action (applied to each passenger)")]},
+  "Play Sound":{cat:"action",subcat:"entity",at:"origins:play_sound",fields:[
+    tf("sound","sound id","minecraft:entity.lightning_bolt.thunder"),
+    nf("volume","volume","1.0"),
+    nf("pitch","pitch","1.0")]},
+  "Raycast (Action)":{cat:"action",subcat:"entity",at:"origins:raycast",fields:[
+    nf("distance","distance","8"),
+    sf("entity","check entities","true",["true","false"]),
+    sf("block","check blocks","true",["true","false"]),
+    tf("command_along_ray","cmd along ray",""),
+    sf("command_along_ray_only_on_hit","cmd only on hit","true",["true","false"])],
+    slots:[aS("entity_action (on hit entity)","entity_action"),aS("block_action (on hit block)","block_action")]},
+  "Remove Effect":{cat:"action",subcat:"entity",at:"origins:remove_effect",fields:[
+    tf("effect","effect id","minecraft:poison")]},
+  "Replace Inventory":{cat:"action",subcat:"entity",at:"origins:replace_inventory",fields:[
+    sf("inventory_type","inventory","inventory",["inventory","power","equipment"]),
+    tf("slot","slot (e.g. weapon.offhand, container.0)","weapon.offhand"),
+    tf("stack_item","item id","minecraft:barrier"),
+    nf("stack_amount","count","1"),
+    tf("power","power id (if inventory_type=power)","")]},
+  "Revoke Power":{cat:"action",subcat:"entity",at:"origins:revoke_power",fields:[
+    tf("power","power id","custom:my_power"),
+    tf("source","source id","custom:my_source")]},
+  "Riding Action":{cat:"action",subcat:"entity",at:"origins:riding_action",fields:[],
+    slots:[aS("entity_action (applied to mount)")]},
+  "Set Fall Distance":{cat:"action",subcat:"entity",at:"origins:set_fall_distance",fields:[
+    nf("fall_distance","distance","0")]},
+  "Set On Fire":{cat:"action",subcat:"entity",at:"origins:set_on_fire",fields:[
+    nf("duration","duration (seconds)","5")]},
+  "Spawn Effect Cloud":{cat:"action",subcat:"entity",at:"origins:spawn_effect_cloud",fields:[
+    nf("radius","radius","3.0"),
+    nf("radius_on_use","radius on use","-0.5"),
+    nf("wait_time","wait time (ticks)","10"),
+    tf("effect_id","effect id","minecraft:poison"),
+    nf("effect_amplifier","effect amplifier","0"),
+    nf("effect_duration","effect duration (ticks)","200")]},
+  "Spawn Entity":{cat:"action",subcat:"entity",at:"origins:spawn_entity",fields:[
+    tf("entity_type","entity type","minecraft:zombie"),
+    tf("tag","nbt tag","")],
+    slots:[
+      {key:"entity_action",label:"entity_action (applied to spawned entity)",accepts:["action","meta"],multi:false},
+      {key:"bientity_action",label:"bientity_action (actor=self, target=spawned entity)",accepts:["action","meta"],multi:false},
+    ]},
+  "Spawn Particles":{cat:"action",subcat:"entity",at:"origins:spawn_particles",fields:[
+    tf("particle","particle type (e.g. minecraft:heart or minecraft:block)","minecraft:heart"),
+    tf("particle_params","particle params (for block/item types, e.g. minecraft:stone)",""),
+    nf("count","count","4"),
+    nf("speed","speed","0.1"),
+    nf("spread_x","spread x","0.5"),
+    nf("spread_y","spread y","0.5"),
+    nf("spread_z","spread z","0.5"),
+    sf("force","force (visible far)","false",["false","true"])]},
+  "Swing Hand":{cat:"action",subcat:"entity",at:"origins:swing_hand",fields:[
+    sf("hand","hand","main_hand",["main_hand","off_hand"])]},
+  "Toggle (Action)":{cat:"action",subcat:"entity",at:"origins:toggle",fields:[
+    tf("power","toggle power id","custom:my_toggle_power")]},
+  "Trigger Cooldown":{cat:"action",subcat:"entity",at:"origins:trigger_cooldown",fields:[
+    tf("resource","cooldown resource id","custom:my_cooldown")]},
+
+  // ═══ BI-ENTITY ACTIONS ════════════════════════════════════════════════════
+  // These operate on actor+target pairs (e.g. used in action_on_entity_use, area_of_effect)
+  "Actor Action":{cat:"action",subcat:"bientity",at:"origins:actor_action",fields:[],slots:[{key:"action",label:"action (entity_action applied to actor)",accepts:["action","meta"],multi:false}]},
+  "Target Action":{cat:"action",subcat:"bientity",at:"origins:target_action",fields:[],slots:[{key:"action",label:"action (entity_action applied to target)",accepts:["action","meta"],multi:false}]},
+  "BiEntity Mount":{cat:"action",subcat:"bientity",at:"origins:mount",fields:[]},
+  "BiEntity Damage":{cat:"action",subcat:"bientity",at:"origins:damage",fields:[nf("amount","amount","4"),tf("damage_type","damage type id (e.g. minecraft:generic)","minecraft:generic")]},
+  "BiEntity Set In Love":{cat:"action",subcat:"bientity",at:"origins:set_in_love",fields:[]},
+  "BiEntity Tame":{cat:"action",subcat:"bientity",at:"origins:tame",fields:[]},
+  "BiEntity Add Velocity":{cat:"action",subcat:"bientity",at:"origins:add_velocity",fields:[
+    nf("x","x","0"),nf("y","y","1.5"),nf("z","z","0"),
+    sf("set","set (not add)","false",["false","true"]),
+    sf("client","client","true",["true","false"]),
+    sf("server","server","true",["true","false"])]},
+  "BiEntity Invert":{cat:"action",subcat:"bientity",at:"origins:invert",fields:[],slots:[{key:"bientity_action",label:"bientity_action (with swapped actor/target)",accepts:["action","meta"],multi:false}]},
+
+  // ═══ BLOCK ACTIONS ════════════════════════════════════════════════════════
+  "Block Add Block":{cat:"action",subcat:"block",at:"origins:add_block",fields:[tf("block","block id","minecraft:stone")]},
+  "Block Bonemeal":{cat:"action",subcat:"block",at:"origins:bonemeal",fields:[sf("effects","show effects","true",["true","false"])]},
+  "Block Execute Command":{cat:"action",subcat:"block",at:"origins:execute_command",fields:[tf("command","command","say Hello!")]},
+  "Block Explode":{cat:"action",subcat:"block",at:"origins:explode",fields:[nf("power","power","3"),sf("destruction_type","destruction","break",["none","break","destroy"]),sf("create_fire","create fire","false",["false","true"]),sf("damage_self","damage self","true",["true","false"])]},
+  "Block Modify State":{cat:"action",subcat:"block",at:"origins:modify_block_state",fields:[
+    tf("property","property name (e.g. powered, age, facing)","powered"),
+    tf("value","value (boolean props: true/false)","true"),
+    tf("enum","enum value (for enum props, e.g. north)",""),
+    sf("operation","int operation (for int props)","add",["add","set"]),
+    nf("change","int change amount (for int props)","1")]},
+  "Block Set Block":{cat:"action",subcat:"block",at:"origins:set_block",fields:[tf("block","block id","minecraft:air")]},
+  "Block Offset":{cat:"action",subcat:"block_meta",at:"origins:offset",isMeta:true,fields:[nf("x","x","0"),nf("y","y","1"),nf("z","z","0")],slots:[blkS("block_action (at offset)")]},
+  "Block Area Of Effect":{cat:"action",subcat:"block_meta",at:"origins:area_of_effect",isMeta:true,fields:[
+    nf("radius","radius","16"),
+    sf("shape","shape","cube",["cube","star","sphere"])],
+    slots:[
+      {key:"block_action",label:"block_action (applied to each block in area) [REQUIRED]",accepts:["action","meta"],multi:false},
+      {key:"block_condition",label:"block_condition (filter which blocks are affected)",accepts:["condition","meta"],multi:false},
+    ]},
+
+  // ═══ ITEM ACTIONS ═════════════════════════════════════════════════════════
+  "Item Consume":{cat:"action",subcat:"item",at:"origins:consume",fields:[nf("amount","amount","1")]},
+  "Item Damage":{cat:"action",subcat:"item",at:"origins:damage",fields:[nf("amount","amount","1"),sf("ignore_unbreaking","ignore unbreaking","false",["false","true"])]},
+  "Item Merge NBT":{cat:"action",subcat:"item",at:"origins:merge_nbt",fields:[tf("nbt","nbt to merge","{CustomModelData:1}")]},
+  "Item Modify":{cat:"action",subcat:"item",at:"origins:modify",fields:[tf("modifier","item modifier id","custom:my_modifier")]},
+  "Item Remove Enchantment":{cat:"action",subcat:"item",at:"origins:remove_enchantment",fields:[tf("enchantment","enchantment id","minecraft:sharpness"),sf("reset_repair_cost","reset repair cost","false",["false","true"])]},
+
+  // ═══ BI-ENTITY CONDITIONS ═════════════════════════════════════════════════
+  "BiEntity Attack Target":{cat:"condition",subcat:"bientity",ct:"origins:attack_target",fields:[inv]},
+  "BiEntity Attacker":{cat:"condition",subcat:"bientity",ct:"origins:attacker",fields:[inv]},
+  "BiEntity Can See":{cat:"condition",subcat:"bientity",ct:"origins:can_see",fields:[
+    sf("shape_type","shape type","visual",["visual","collider","outline","camera"]),
+    sf("fluid_handling","fluid handling","none",["none","any","source_only"]),
+    inv]},
+  "BiEntity Distance":{cat:"condition",subcat:"bientity",ct:"origins:distance",fields:[cmp("<="),cto("16"),inv]},
+  "BiEntity Owner":{cat:"condition",subcat:"bientity",ct:"origins:owner",fields:[inv]},
+  "BiEntity Relative Rotation":{cat:"condition",subcat:"bientity",ct:"origins:relative_rotation",fields:[
+    tf("axes","axes (comma-separated: x, y, z)","x, y, z"),
+    sf("actor_rotation","actor rotation","head",["head","body"]),
+    sf("target_rotation","target rotation","head",["head","body"]),
+    cmp("<="),cto("90"),inv]},
+  "BiEntity Riding":{cat:"condition",subcat:"bientity",ct:"origins:riding",fields:[inv]},
+  "BiEntity Riding Recursive":{cat:"condition",subcat:"bientity",ct:"origins:riding_recursive",fields:[inv]},
+  "BiEntity Riding Root":{cat:"condition",subcat:"bientity",ct:"origins:riding_root",fields:[inv]},
+  "Actor Condition":{cat:"condition",subcat:"bientity",ct:"origins:actor_condition",isMeta:true,fields:[],slots:[{key:"condition",label:"entity_condition (checked on actor)",accepts:["condition","meta"],multi:false}]},
+  "Target Condition":{cat:"condition",subcat:"bientity",ct:"origins:target_condition",isMeta:true,fields:[],slots:[{key:"condition",label:"entity_condition (checked on target)",accepts:["condition","meta"],multi:false}]},
+  "BiEntity Both":{cat:"condition",subcat:"bientity",ct:"origins:both",isMeta:true,fields:[],slots:[{key:"conditions",label:"bientity_conditions (both must pass)",accepts:["condition"],multi:true}]},
+  "BiEntity Either":{cat:"condition",subcat:"bientity",ct:"origins:either",isMeta:true,fields:[],slots:[{key:"conditions",label:"bientity_conditions (either must pass)",accepts:["condition"],multi:true}]},
+  "BiEntity Invert (Cond)":{cat:"condition",subcat:"bientity",ct:"origins:invert",isMeta:true,fields:[],slots:[{key:"condition",label:"bientity_condition (with swapped actor/target)",accepts:["condition"],multi:false}]},
+  "BiEntity Undirected":{cat:"condition",subcat:"bientity",ct:"origins:undirected",isMeta:true,fields:[],slots:[{key:"condition",label:"bientity_condition (direction-independent)",accepts:["condition"],multi:false}]},
+
+  // ═══ BLOCK CONDITIONS ═════════════════════════════════════════════════════
+  "Block Adjacent":{cat:"condition",subcat:"block",ct:"origins:adjacent",fields:[inv],slots:[blkCS("block_condition (adjacent block)")]},
+  "Block Attachable":{cat:"condition",subcat:"block",ct:"origins:attachable",fields:[inv]},
+  "Block Blast Resistance":{cat:"condition",subcat:"block",ct:"origins:blast_resistance",fields:[cmp(">="),cto("0"),inv]},
+  "Block Block":{cat:"condition",subcat:"block",ct:"origins:block",fields:[tf("block","block id","minecraft:stone"),inv]},
+  "Block Block State":{cat:"condition",subcat:"block",ct:"origins:block_state",fields:[tf("property","property","powered"),tf("value","value","true"),inv]},
+  "Block Exposed To Sky":{cat:"condition",subcat:"block",ct:"origins:exposed_to_sky",fields:[inv]},
+  "Block Fluid":{cat:"condition",subcat:"block",ct:"origins:fluid",fields:[],slots:[{key:"fluid_condition",label:"fluid_condition",accepts:["condition"],multi:false}]},
+  "Block Hardness":{cat:"condition",subcat:"block",ct:"origins:hardness",fields:[cmp("<="),cto("2.0"),inv]},
+  "Block Height":{cat:"condition",subcat:"block",ct:"origins:height",fields:[cmp(">="),cto("64"),inv]},
+  "Block In Tag":{cat:"condition",subcat:"block",ct:"origins:in_tag",fields:[tf("tag","block tag","minecraft:logs"),inv]},
+  "Block Light Blocking":{cat:"condition",subcat:"block",ct:"origins:light_blocking",fields:[inv]},
+  "Block Light Level":{cat:"condition",subcat:"block",ct:"origins:light_level",fields:[sf("light_type","light type","block",["block","sky"]),cmp("<="),cto("8"),inv]},
+  "Block Movement Blocking":{cat:"condition",subcat:"block",ct:"origins:movement_blocking",fields:[inv]},
+  "Block NBT":{cat:"condition",subcat:"block",ct:"origins:nbt",fields:[tf("nbt","nbt compound","{Items:[]}"),inv]},
+  "Block Replaceable":{cat:"condition",subcat:"block",ct:"origins:replacable",fields:[inv]},
+  "Block Slipperiness":{cat:"condition",subcat:"block",ct:"origins:slipperiness",fields:[cmp(">="),cto("0.6"),inv]},
+  "Block Water Loggable":{cat:"condition",subcat:"block",ct:"origins:water_loggable",fields:[inv]},
+  "Block Offset (Cond)":{cat:"condition",subcat:"block",ct:"origins:offset",isMeta:true,fields:[nf("x","x","0"),nf("y","y","1"),nf("z","z","0")],slots:[blkCS("block_condition (at offset)")]},
+
+  // ═══ ITEM CONDITIONS ══════════════════════════════════════════════════════
+  "Item Amount":{cat:"condition",subcat:"item",ct:"origins:amount",fields:[cmp(">="),cto("1"),inv]},
+  "Item Armor Value":{cat:"condition",subcat:"item",ct:"origins:armor_value",fields:[cmp(">="),cto("4"),inv]},
+  "Item Durability":{cat:"condition",subcat:"item",ct:"origins:durability",fields:[cmp(">="),cto("1"),inv]},
+  "Item Empty":{cat:"condition",subcat:"item",ct:"origins:empty",fields:[inv]},
+  "Item Enchantment":{cat:"condition",subcat:"item",ct:"origins:enchantment",fields:[tf("enchantment","enchantment id","minecraft:sharpness"),cmp(">="),cto("1"),inv]},
+  "Item Fireproof":{cat:"condition",subcat:"item",ct:"origins:fireproof",fields:[inv]},
+  "Item Food":{cat:"condition",subcat:"item",ct:"origins:food",fields:[inv]},
+  "Item Harvest Level":{cat:"condition",subcat:"item",ct:"origins:harvest_level",fields:[cmp(">="),cto("2"),inv]},
+  "Item Ingredient":{cat:"condition",subcat:"item",ct:"origins:ingredient",fields:[tf("ingredient_item","item id (ingredient)","minecraft:diamond"),inv]},
+  "Item Is Damageable":{cat:"condition",subcat:"item",ct:"origins:is_damageable",fields:[inv]},
+  "Item Is Equippable":{cat:"condition",subcat:"item",ct:"origins:is_equippable",fields:[inv]},
+  "Item Meat":{cat:"condition",subcat:"item",ct:"origins:meat",fields:[inv]},
+  "Item NBT":{cat:"condition",subcat:"item",ct:"origins:nbt",fields:[tf("nbt","nbt compound","{CustomModelData:1}"),inv]},
+  "Item Relative Durability":{cat:"condition",subcat:"item",ct:"origins:relative_durability",fields:[cmp("<="),cto("0.5"),inv]},
+  "Item Smeltable":{cat:"condition",subcat:"item",ct:"origins:smeltable",fields:[inv]},
+  "Item Enchantable":{cat:"condition",subcat:"item",ct:"origins:enchantable",fields:[inv]}, // Origins 1.9+ (MC 1.20.4+) only
+  "Item Has Power":{cat:"condition",subcat:"item",ct:"origins:has_power",fields:[ // Origins 1.9+ (MC 1.20.4+) only
+    tf("power","power id","custom:my_power"),
+    sf("slot","equipment slot (optional)","",["","head","chest","legs","feet","mainhand","offhand"]),
+    inv]},
+  "Item Power Count":{cat:"condition",subcat:"item",ct:"origins:power_count",fields:[ // Origins 1.9+ (MC 1.20.4+) only
+    sf("slot","equipment slot (optional)","",["","head","chest","legs","feet","mainhand","offhand"]),
+    cmp(">="),cto("1"),inv]},
+
+  // ═══ DAMAGE CONDITIONS ════════════════════════════════════════════════════
+  "Damage Amount":{cat:"condition",subcat:"damage",ct:"origins:amount",fields:[cmp(">="),cto("4"),inv]},
+  "Damage Attacker":{cat:"condition",subcat:"damage",ct:"origins:attacker",fields:[],slots:[{key:"entity_condition",label:"entity_condition (on attacker)",accepts:["condition","meta"],multi:false}]},
+  "Damage Bypasses Armor":{cat:"condition",subcat:"damage",ct:"origins:bypasses_armor",fields:[inv]},
+  "Damage Explosive":{cat:"condition",subcat:"damage",ct:"origins:explosive",fields:[inv]},
+  "Damage Fire":{cat:"condition",subcat:"damage",ct:"origins:fire",fields:[inv]},
+  "Damage From Falling":{cat:"condition",subcat:"damage",ct:"origins:from_falling",fields:[inv]},
+  "Damage Name":{cat:"condition",subcat:"damage",ct:"origins:name",fields:[tf("name","damage source name (e.g. mob_attack, fall, fire)","mob_attack"),inv]},
+  "Damage Out Of World":{cat:"condition",subcat:"damage",ct:"origins:out_of_world",fields:[inv]},
+  "Damage Projectile":{cat:"condition",subcat:"damage",ct:"origins:projectile",fields:[inv]},
+  "Damage Unblockable":{cat:"condition",subcat:"damage",ct:"origins:unblockable",fields:[inv]},
+  "Damage In Tag":{cat:"condition",subcat:"damage",ct:"origins:in_tag",fields:[
+    tf("tag","damage tag (e.g. minecraft:is_fire) — NOTE: Origins 1.9+ / MC 1.20.4+ only","minecraft:is_fire"),inv]},
+
+  "Prevent Block Place":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_block_place",fields:[
+    tf("name","name","prev_block_place"),
+  ],slots:[aS("entity_action (on prevented)"),{key:"place_to_condition",label:"block_condition (target position)",accepts:["condition","meta"],multi:false},{key:"place_on_condition",label:"block_condition (block placed on)",accepts:["condition","meta"],multi:false},{key:"item_condition",label:"item_condition (which items)",accepts:["condition","meta"],multi:false},cS()]},
+  "Prevent Item Pickup":{cat:"power",subcat:"power_prevent",pt:"origins:prevent_item_pickup",fields:[
+    tf("name","name","prev_item_pickup"),
+    nf("priority","priority","0"),
+  ],slots:[{key:"bientity_action_thrower",label:"bientity_action_thrower (actor=thrower, target=self)",accepts:["action","meta"],multi:false},{key:"bientity_action_item",label:"bientity_action_item (actor=self, target=item entity)",accepts:["action","meta"],multi:false},{key:"item_action",label:"item_action (on the item)",accepts:["action","meta"],multi:false},{key:"bientity_condition",label:"bientity_condition (actor=thrower, target=self)",accepts:["condition","meta"],multi:false},{key:"item_condition",label:"item_condition (which items)",accepts:["condition","meta"],multi:false},cS()]},
+  // ═══ NEW ENTITY ACTIONS ══════════════════════════════════════════════════
+  "Action On Set":{cat:"action",subcat:"entity",at:"origins:action_on_set",fields:[
+    tf("set","entity_set power id","custom:my_entity_set"),
+    sf("action","which action","add",["add","remove","iterate"])],
+    slots:[
+      {key:"entity_action",label:"entity_action (applied to entities in set, if action=iterate)",accepts:["action","meta"],multi:false},
+      {key:"bientity_action",label:"bientity_action (actor=self, target=entity — for add/remove)",accepts:["action","meta"],multi:false},
+    ]},
+  "Equipped Item Action":{cat:"action",subcat:"entity",at:"origins:equipped_item_action",fields:[
+    sf("equipment_slot","equipment slot","mainhand",["mainhand","offhand","head","chest","legs","feet"])],
+    slots:[
+      {key:"item_action",label:"item_action (applied to equipped item) [REQUIRED]",accepts:["action","meta"],multi:false},
+    ]},
+  "Grant Advancement":{cat:"action",subcat:"entity",at:"origins:grant_advancement",fields:[
+    tf("advancement","advancement id","minecraft:adventure/arbalistic")]},
+  "Random Teleport":{cat:"action",subcat:"entity",at:"origins:random_teleport",fields:[
+    nf("area_width","area width","8"),
+    nf("area_height","area height","8"),
+    sf("loaded_chunks_only","loaded chunks only","true",["true","false"])],
+    slots:[
+      {key:"landing_block_condition",label:"landing_block_condition (which blocks to land on)",accepts:["condition","meta"],multi:false},
+      {key:"landing_condition",label:"landing_condition (entity condition at landing spot)",accepts:["condition","meta"],multi:false},
+    ]},
+  "Remove Power":{cat:"action",subcat:"entity",at:"origins:remove_power",fields:[
+    tf("power","power id","custom:my_power"),
+    tf("source","source id","custom:my_source")]},
+  "Revoke Advancement":{cat:"action",subcat:"entity",at:"origins:revoke_advancement",fields:[
+    tf("advancement","advancement id","minecraft:adventure/arbalistic")]},
+  "Revoke All Powers":{cat:"action",subcat:"entity",at:"origins:revoke_all_powers",fields:[
+    tf("source","source id","custom:my_source")]},
+  "Selector Action":{cat:"action",subcat:"entity",at:"origins:selector_action",fields:[
+    tf("selector","entity selector","@e[distance=..8,limit=1]")],
+    slots:[
+      {key:"entity_action",label:"entity_action (applied to selected entities) [REQUIRED]",accepts:["action","meta"],multi:false},
+    ]},
+
+  "Glowing":{cat:"condition",subcat:"entity",ct:"origins:glowing",fields:[inv]},
+  "In Snow":{cat:"condition",subcat:"entity",ct:"origins:in_snow",fields:[inv]},
+  "In Thunderstorm":{cat:"condition",subcat:"entity",ct:"origins:in_thunderstorm",fields:[inv]},
+  "Power Type":{cat:"condition",subcat:"entity",ct:"origins:power_type",fields:[
+    tf("power_type","power type id (e.g. origins:active_self)","origins:active_self"),inv]},
+
+  // ═══ META ═════════════════════════════════════════════════════════════════
+  "AND Conditions":{cat:"meta",ct:"origins:and",fields:[],slots:[mcS("conditions — ALL must be true")]},
+  "OR Conditions":{cat:"meta",ct:"origins:or",fields:[],slots:[mcS("conditions — ANY must be true")]},
+  "NOT Condition":{cat:"meta",ct:"origins:not",fields:[],slots:[cS("condition to invert")]},
+  "Chance Condition":{cat:"meta",ct:"origins:chance",fields:[nf("chance","chance (0-1)","0.5")],slots:[]},
+  "AND Actions":{cat:"meta",at:"origins:and",fields:[],slots:[maS("actions — all run in sequence")]},
+  "Chance Action":{cat:"meta",at:"origins:chance",fields:[nf("chance","chance (0-1)","0.5")],slots:[aS("action (if chance passes)")]},
+  "If-Else Action":{cat:"meta",at:"origins:if_else",fields:[],slots:[cS("condition (if...)"),aS("if_action (...then)","if_action"),aS("else_action (...else)","else_action")]},
+};
+
+
+const SECTIONS = [
+  {cat:"power",subcat:"power_general",label:"Power — General",       keys:["Attribute","Attribute Modify Transfer","Burn","Climbing","Conditioned Attribute","Conditioned Restrict Armor","Cooldown","Creative Flight","Damage Over Time","Disable Regen","Edible Item","Effect Immunity","Elytra Flight","Entity Glow","Entity Group","Entity Set","Exhaust (Power)","Fire Immunity","Fire Projectile","Freeze","Game Event Listener","Grounded","Ignore Water","Inventory","Invisibility","Invulnerability","Item On Item","Keep Inventory","Launch","Lava Vision","Model Color","Multiple","Night Vision","Overlay","Particle","Phasing","Recipe","Replace Loot Table","Resource","Restrict Armor","Self Glow","Shader","Shaking","Simple","Stacking Status Effect","Starting Equipment","Status Bar Texture","Swimming","Toggle","Toggle Night Vision","Tooltip","Walk On Fluid"]},
+  {cat:"power",subcat:"power_action",label:"Power — Action",        keys:["Action On Being Used","Action On Block Break","Action On Block Place","Action On Block Use","Action On Callback","Action On Death","Action On Entity Use","Action On Hit","Action On Item Pickup","Action On Item Use","Action On Land","Action On Wake Up","Action Over Time","Action When Damage Taken","Action When Hit","Active Self","Attacker Action When Hit","Self Action On Hit","Self Action On Kill","Self Action When Hit","Target Action On Hit"]},
+  {cat:"power",subcat:"power_modify", label:"Power — Modify",        keys:["Modify Air Speed","Modify Attribute","Modify Block Render","Modify Break Speed","Modify Camera Submersion","Modify Crafting","Modify Damage Dealt","Modify Damage Taken","Modify Enchantment Level","Modify Exhaustion","Modify Falling","Modify Fluid Render","Modify Food","Modify Grindstone","Modify Harvest","Modify Healing","Modify Insomnia Ticks","Modify Jump","Modify Lava Speed","Modify Player Spawn","Modify Projectile Damage","Modify Slipperiness","Modify Status Effect Amplifier","Modify Status Effect Duration","Modify Swim Speed","Modify Velocity","Modify XP Gain"]},
+  {cat:"power",subcat:"power_prevent",label:"Power — Prevent",       keys:["Prevent Being Used","Prevent Block Place","Prevent Block Selection","Prevent Block Use","Prevent Death","Prevent Elytra Flight","Prevent Entity Collision","Prevent Entity Render","Prevent Entity Use","Prevent Feature Render","Prevent Game Event","Prevent Item Pickup","Prevent Item Use","Prevent Sleep","Prevent Sprinting"]},
+  {cat:"condition",subcat:"entity",label:"Condition — Entity",    keys:["Ability","Advancement","Air","Attribute (Cond)","Biome","Block Collision","Block In Radius","Brightness","Climbing (Cond)","Collided Horizontally","Command (Cond)","Creative Flying","Daytime","Dimension","Distance From Coordinates","Elytra Flight Possible","Enchantment","Entity Group (Cond)","Entity Type","Equipped Item","Exists","Exposed To Sky","Exposed To Sun","Fall Distance","Fall Flying","Fluid Height","Food Level","Gamemode","Glowing","Health","In Block","In Block Anywhere","In Rain","In Snow","In Tag","In Thunderstorm","Inventory (Cond)","Invisible (Cond)","Living","Moving","NBT","On Block","On Fire","Origin (Cond)","Passenger","Passenger Recursive","Power","Power Active","Power Type","Predicate","Raycast (Cond)","Relative Health","Resource (Cond)","Riding","Riding Recursive","Riding Root","Saturation Level","Scoreboard","Sneaking","Sprinting","Status Effect (Cond)","Submerged In","Swimming (Cond)","Tamed","Time Of Day","Using Effective Tool","Using Item","XP Levels","XP Points"]},
+  {cat:"condition",subcat:"bientity", label:"Condition — Bi-Entity", keys:["BiEntity Attack Target","BiEntity Attacker","BiEntity Can See","BiEntity Distance","BiEntity Owner","BiEntity Relative Rotation","BiEntity Riding","BiEntity Riding Recursive","BiEntity Riding Root","Actor Condition","Target Condition","BiEntity Both","BiEntity Either","BiEntity Invert (Cond)","BiEntity Undirected"]},
+  {cat:"condition",subcat:"block",    label:"Condition — Block",     keys:["Block Adjacent","Block Attachable","Block Blast Resistance","Block Block","Block Block State","Block Exposed To Sky","Block Fluid","Block Hardness","Block Height","Block In Tag","Block Light Blocking","Block Light Level","Block Movement Blocking","Block NBT","Block Replaceable","Block Slipperiness","Block Water Loggable","Block Offset (Cond)","AND Conditions","OR Conditions"]},
+  {cat:"condition",subcat:"item",     label:"Condition — Item",      keys:["Item Amount","Item Armor Value","Item Durability","Item Empty","Item Enchantable","Item Enchantment","Item Fireproof","Item Food","Item Has Power","Item Harvest Level","Item Ingredient","Item Is Damageable","Item Is Equippable","Item Meat","Item NBT","Item Power Count","Item Relative Durability","Item Smeltable","AND Conditions","OR Conditions"]},
+  {cat:"condition",subcat:"damage",   label:"Condition — Damage",    keys:["Damage Amount","Damage Attacker","Damage Bypasses Armor","Damage Explosive","Damage Fire","Damage From Falling","Damage In Tag","Damage Name","Damage Out Of World","Damage Projectile","Damage Unblockable","AND Conditions","OR Conditions"]},
+  {cat:"action",subcat:"entity",label:"Action — Entity",       keys:["Action On Set","Add Velocity","Add XP","Area Of Effect","Apply Effect","Block Action At","Change Resource","Clear Effect","Crafting Table","Damage","Dismount","Drop Inventory","Emit Game Event","Ender Chest","Equipped Item Action","Execute Command","Exhaust","Explode","Extinguish","Feed","Fire Projectile (Action)","Gain Air","Give","Grant Advancement","Grant Power","Heal","Modify Death Ticks","Modify Inventory","Modify Resource","Modify Stat","Passenger Action","Play Sound","Random Teleport","Raycast (Action)","Remove Effect","Remove Power","Replace Inventory","Revoke Advancement","Revoke All Powers","Revoke Power","Riding Action","Selector Action","Set Fall Distance","Set On Fire","Spawn Effect Cloud","Spawn Entity","Spawn Particles","Swing Hand","Toggle (Action)","Trigger Cooldown"]},
+  {cat:"action",subcat:"bientity",   label:"Action — Bi-Entity",    keys:["Actor Action","Target Action","BiEntity Add Velocity","BiEntity Mount","BiEntity Damage","BiEntity Set In Love","BiEntity Tame","BiEntity Invert","AND Actions","Chance Action","If-Else Action"]},
+  {cat:"action",subcat:"block",      label:"Action — Block",        keys:["Block Add Block","Block Area Of Effect","Block Bonemeal","Block Execute Command","Block Explode","Block Modify State","Block Set Block","Block Offset","AND Actions"]},
+  {cat:"action",subcat:"item",       label:"Action — Item",         keys:["Item Consume","Item Damage","Item Merge NBT","Item Modify","Item Remove Enchantment","AND Actions"]},
+  {cat:"meta",              label:"Meta / Logic",           keys:["AND Conditions","OR Conditions","NOT Condition","Chance Condition","AND Actions","Chance Action","If-Else Action"]},
+]
+
+// ═══════════════════════════════════════════════════════════════
+// JSON GENERATION
+// ═══════════════════════════════════════════════════════════════
+function cvt(v){
+  if(v==="true")return true; if(v==="false")return false;
+  const n=Number(v); return v!==""&&!isNaN(n)?n:v;
+}
+function b2j(id,bmap){
+  const b=bmap[id]; if(!b)return null;
+  const def=DEFS[b.bname], obj={};
+  if(def.pt)obj.type=def.pt; if(def.ct)obj.type=def.ct; if(def.at)obj.type=def.at;
+
+  // Special case: Multiple power — sub-powers become inline named keys
+  if(def.isMultiple){
+    const subIds=b.children["subpowers"]||[];
+    subIds.forEach((cid,i)=>{
+      const cb=bmap[cid];
+      const key=(cb&&cb.vals&&cb.vals.name&&cb.vals.name.trim())||("sub_power_"+(i+1));
+      const subJson=b2j(cid,bmap);
+      if(subJson) obj[key]=subJson;
+    });
+    return obj;
+  }
+
+  // Standard fields
+  def.fields.forEach(f=>{
+    const v=b.vals[f.k];
+    if(v===undefined||v==="")return; // skip blank fields
+    if(f.k==="name")return; // name handled separately below
+    obj[f.k]=cvt(v);
+  });
+  // Include name only if non-blank (used for file naming, not always needed in JSON)
+  if(b.vals.name&&b.vals.name.trim())obj.name=b.vals.name.trim();
+
+  // Stacking Status Effect: build effect object from flattened fields
+  if(def.pt==="origins:stacking_status_effect"&&b.vals.effect_id){
+    obj.effect={effect:b.vals.effect_id};
+    if(b.vals.effect_amplifier!=="0")obj.effect.amplifier=cvt(b.vals.effect_amplifier);
+    if(b.vals.effect_ambient!=="true")obj.effect.is_ambient=cvt(b.vals.effect_ambient);
+    if(b.vals.effect_show_particles!=="false")obj.effect.show_particles=cvt(b.vals.effect_show_particles);
+    // remove flattened keys from obj
+    delete obj.effect_id; delete obj.effect_amplifier; delete obj.effect_ambient; delete obj.effect_show_particles;
+  }
+
+  // Attribute and related: build modifier object from flattened fields
+  if((def.pt==="origins:attribute"||def.pt==="origins:conditioned_attribute"||def.pt==="origins:attribute_modify_transfer"||def.pt==="origins:modify_attribute")&&b.vals.modifier_attribute){
+    const mod={attribute:b.vals.modifier_attribute,operation:b.vals.modifier_operation||"addition",value:cvt(b.vals.modifier_value||"0")};
+    if(b.vals.modifier_name)mod.name=b.vals.modifier_name;
+    obj.modifier=mod;
+    delete obj.modifier_attribute; delete obj.modifier_operation; delete obj.modifier_value; delete obj.modifier_name;
+  }
+
+  // Modify_* powers: build modifier object
+  if(def.pt&&def.pt.startsWith("origins:modify_")&&b.vals.modifier_value!==undefined&&
+     !["origins:modify_block_render","origins:modify_camera_submersion","origins:modify_fluid_render",
+       "origins:modify_player_spawn","origins:modify_crafting","origins:modify_harvest",
+       "origins:modify_grindstone","origins:modify_food",
+       "origins:modify_status_effect_amplifier","origins:modify_status_effect_duration",
+       "origins:modify_velocity"].includes(def.pt)){
+    const mod={operation:b.vals.modifier_operation||"addition",value:cvt(b.vals.modifier_value||"0")};
+    obj.modifier=mod;
+    delete obj.modifier_operation; delete obj.modifier_value;
+  }
+
+  // Modify Status Effect Amplifier/Duration: build modifier object (always)
+  if(def.pt==="origins:modify_status_effect_amplifier"||def.pt==="origins:modify_status_effect_duration"){
+    const mod={operation:b.vals.modifier_operation||"addition",value:cvt(b.vals.modifier_value||"1")};
+    obj.modifier=mod;
+    delete obj.modifier_operation; delete obj.modifier_value;
+  }
+
+  // Modify Velocity: parse axes as comma-separated text, build modifier
+  if(def.pt==="origins:modify_velocity"){
+    const rawAxes=(b.vals.axes||"x,y,z").split(",").map(a=>a.trim()).filter(Boolean);
+    obj.axes=rawAxes; // overwrite the text field with the parsed array
+    const mod={operation:b.vals.modifier_operation||"multiply_total",value:cvt(b.vals.modifier_value||"-2")};
+    obj.modifier=mod;
+    delete obj.modifier_operation; delete obj.modifier_value;
+  }
+
+  // Starting Equipment: build stack object
+  if(def.pt==="origins:starting_equipment"&&b.vals.stack_item){
+    const stack={item:b.vals.stack_item};
+    if(b.vals.stack_amount&&b.vals.stack_amount!=="1")stack.amount=cvt(b.vals.stack_amount);
+    if(b.vals.stack_slot&&b.vals.stack_slot!=="")stack.slot=cvt(b.vals.stack_slot);
+    if(b.vals.stack_tag&&b.vals.stack_tag!=="")stack.tag=b.vals.stack_tag;
+    obj.stack=stack;
+    delete obj.stack_item; delete obj.stack_amount; delete obj.stack_slot; delete obj.stack_tag;
+  }
+
+  // Give: build stack object
+  if(def.at==="origins:give"&&b.vals.stack_item){
+    const stack={item:b.vals.stack_item};
+    if(b.vals.stack_amount&&b.vals.stack_amount!=="1")stack.amount=cvt(b.vals.stack_amount);
+    obj.stack=stack;
+    delete obj.stack_item; delete obj.stack_amount;
+  }
+
+  // Replace Inventory: build stack object
+  if(def.at==="origins:replace_inventory"&&b.vals.stack_item){
+    const stack={item:b.vals.stack_item};
+    if(b.vals.stack_amount&&b.vals.stack_amount!=="1")stack.amount=cvt(b.vals.stack_amount);
+    obj.stack=stack;
+    delete obj.stack_item; delete obj.stack_amount;
+  }
+
+  // Spawn Entity: clean up empty tag
+  if(def.at==="origins:spawn_entity"){if(!obj.tag)delete obj.tag;}
+
+  // Fire Projectile: clean up empty tag
+  if(def.at==="origins:fire_projectile"){if(!obj.tag)delete obj.tag;}
+
+  // Damage: damage_type outputs directly as namespaced identifier
+
+  // Hands field: convert string "[main_hand, off_hand]" to array
+  if(obj.hands&&typeof obj.hands==="string"){
+    obj.hands=obj.hands.replace(/[\[\]]/g,"").split(",").map(h=>h.trim()).filter(Boolean);
+  }
+
+  // Modify Resource: 1.20.1 uses operation + value directly (no modifier object wrapper)
+  if(def.at==="origins:modify_resource"){
+    if(obj.modifier_operation!==undefined){obj.operation=obj.modifier_operation;delete obj.modifier_operation;}
+    if(obj.modifier_value!==undefined){obj.value=cvt(String(obj.modifier_value));delete obj.modifier_value;}
+  }
+
+  // Add XP: skip empty optional fields
+  if(def.at==="origins:add_xp"){
+    if(!obj.points&&obj.points!==0)delete obj.points;
+    if(!obj.levels&&obj.levels!==0)delete obj.levels;
+  }
+
+  // Edible Item: build food_component nested object from flat fields
+  if(def.pt==="origins:edible_item"){
+    const fc={hunger:cvt(b.vals.food_hunger||"4"),saturation:cvt(b.vals.food_saturation||"0.3")};
+    if(b.vals.food_meat==="true")fc.meat=true;
+    if(b.vals.food_snack==="true")fc.snack=true;
+    obj.food_component=fc;
+    delete obj.food_hunger; delete obj.food_saturation; delete obj.food_meat; delete obj.food_snack;
+    if(b.vals.result_item&&b.vals.result_item.trim()){
+      const rs={item:b.vals.result_item};
+      if(b.vals.result_amount&&b.vals.result_amount!=="1")rs.amount=cvt(b.vals.result_amount);
+      obj.result_stack=rs;
+    }
+    delete obj.result_item; delete obj.result_amount;
+  }
+
+  // Biome condition: convert biomes comma-sep string to array
+  if(def.ct==="origins:biome"){
+    if(obj.biomes&&typeof obj.biomes==="string"&&obj.biomes.trim()){
+      obj.biomes=obj.biomes.split(",").map(b=>b.trim()).filter(Boolean);
+    } else {
+      delete obj.biomes;
+    }
+    if(!obj.biome||obj.biome==="")delete obj.biome;
+  }
+
+  // Spawn Particles: delete particle from standard passthrough (handled below)
+  if(def.at==="origins:spawn_particles") delete obj.particle;
+
+  // Spawn Particles: build particle object from type+params fields
+  if(def.at==="origins:spawn_particles"&&b.vals.particle){
+    if(b.vals.particle_params&&b.vals.particle_params.trim()){
+      obj.particle={type:b.vals.particle,params:b.vals.particle_params};
+    } else {
+      obj.particle=b.vals.particle;
+    }
+    delete obj.particle_params;
+  }
+
+  // Spawn Particles spread: build spread object
+  if(def.at==="origins:spawn_particles"){
+    const sx=cvt(b.vals.spread_x||"0.5"),sy=cvt(b.vals.spread_y||"0.5"),sz=cvt(b.vals.spread_z||"0.5");
+    obj.spread={x:sx,y:sy,z:sz};
+    delete obj.spread_x; delete obj.spread_y; delete obj.spread_z;
+  }
+
+  // Modify Grindstone: build xp_modifier and result_stack objects
+  if(def.pt==="origins:modify_grindstone"){
+    if(b.vals.xp_mod_val!==undefined&&b.vals.xp_mod_val!==""){
+      obj.xp_modifier={operation:b.vals.xp_mod_op||"multiply_total",value:cvt(b.vals.xp_mod_val)};
+    }
+    delete obj.xp_mod_op; delete obj.xp_mod_val;
+    if(b.vals.result_stack_item&&b.vals.result_stack_item!==""){
+      const rs={item:b.vals.result_stack_item};
+      if(b.vals.result_stack_amount&&b.vals.result_stack_amount!=="1")rs.amount=cvt(b.vals.result_stack_amount);
+      obj.result_stack=rs;
+    }
+    delete obj.result_stack_item; delete obj.result_stack_amount;
+  }
+
+  // Modify Food: build food_modifier and saturation_modifier objects
+  if(def.pt==="origins:modify_food"){
+    if(b.vals.food_mod_val!==undefined&&b.vals.food_mod_val!==""){
+      obj.food_modifier={operation:b.vals.food_mod_op||"addition",value:cvt(b.vals.food_mod_val)};
+    }
+    if(b.vals.sat_mod_val!==undefined&&b.vals.sat_mod_val!==""){
+      obj.saturation_modifier={operation:b.vals.sat_mod_op||"addition",value:cvt(b.vals.sat_mod_val)};
+    }
+    delete obj.food_mod_op; delete obj.food_mod_val;
+    delete obj.sat_mod_op; delete obj.sat_mod_val;
+  }
+
+  // Spawn Effect Cloud: build effect object from flattened fields
+  if(def.at==="origins:spawn_effect_cloud"&&b.vals.effect_id){
+    const eff={effect:b.vals.effect_id,duration:cvt(b.vals.effect_duration||"200"),amplifier:cvt(b.vals.effect_amplifier||"0")};
+    obj.effect=eff;
+    delete obj.effect_id; delete obj.effect_amplifier; delete obj.effect_duration;
+  }
+
+  // Apply Effect: build effect object from flattened fields
+  if(def.at==="origins:apply_effect"&&b.vals.effect_id){
+    const eff={effect:b.vals.effect_id,duration:cvt(b.vals.effect_duration||"100"),amplifier:cvt(b.vals.effect_amplifier||"0")};
+    if(b.vals.effect_is_ambient==="true")eff.is_ambient=true;
+    if(b.vals.effect_show_particles==="false")eff.show_particles=false;
+    if(b.vals.effect_show_icon==="false")eff.show_icon=false;
+    obj.effect=eff;
+    delete obj.effect_id; delete obj.effect_duration; delete obj.effect_amplifier;
+    delete obj.effect_is_ambient; delete obj.effect_show_particles; delete obj.effect_show_icon;
+  }
+
+  // Slots
+  (def.slots||[]).forEach(slot=>{
+    const ids=b.children[slot.key]||[];
+    if(!ids.length)return;
+    const js=ids.map(cid=>b2j(cid,bmap)).filter(Boolean);
+    if(slot.multi){obj[slot.key]=js;}
+    else if(js.length===1){obj[slot.key]=js[0];}
+    else{const isC=slot.accepts.includes("condition");obj[slot.key]={type:"origins:and",[isC?"conditions":"actions"]:js};}
+  });
+  return obj;
+}
+function genFiles(roots,bmap){
+  const files=[];
+  roots.forEach(id=>{
+    const b=bmap[id]; if(!b)return;
+    const def=DEFS[b.bname];
+    if(def.cat==="origin"){
+      const oid=b.vals.id||"my_origin";
+      files.push({name:`data/custom/origins/${oid}.json`,json:b2j(id,bmap)});
+      (b.children.powers||[]).forEach(pid=>{
+        const pb=bmap[pid]; if(!pb)return;
+        files.push({name:`data/custom/powers/${oid}/${pb.vals.name||"power"}.json`,json:b2j(pid,bmap)});
+      });
+    } else if(def.cat==="power"){
+      files.push({name:`data/custom/powers/${b.vals.name||"power"}.json`,json:b2j(id,bmap)});
+    }
+  });
+  return files;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCRATCH-STYLE SVG BLOCK SHAPE
+// – Hat block (origin): rounded top, notch bottom
+// ═══════════════════════════════════════════════════════════════
+// Notch system — parent bottom has bump DOWN, child top has socket (recess DOWN)
+// Child slides up by NH so socket wraps around parent's bump
+// ═══════════════════════════════════════════════════════════════
+const NW=32, NW_ROOT=32, NH=16, NI=15, NX=20, NX_ROOT=37, R=8, CR=8; // NX_ROOT shifts bump right to align with child notch
+
+function stackPath(w,h,isChild){
+  let d;
+  if(isChild){
+    // Notch DOWN at NX position (same as parent bump) — socket that fits parent bump
+    d =`M${R},0 L${NX-CR},0 Q${NX},0 ${NX},${CR} L${NX},${NI-CR} Q${NX},${NI} ${NX+CR},${NI} L${NX+NW-CR},${NI} Q${NX+NW},${NI} ${NX+NW},${NI-CR} L${NX+NW},${CR} Q${NX+NW},0 ${NX+NW+CR},0 L${w-R},0 Q${w},0 ${w},${R} `;
+    d+=`L${w},${h-R} Q${w},${h} ${w-R},${h} `;
+    d+=`L${NX_ROOT+NW_ROOT+CR},${h} Q${NX_ROOT+NW_ROOT},${h} ${NX_ROOT+NW_ROOT},${h+CR} L${NX_ROOT+NW_ROOT},${h+NH-CR} Q${NX_ROOT+NW_ROOT},${h+NH} ${NX_ROOT+NW_ROOT-CR},${h+NH} L${NX_ROOT+CR},${h+NH} Q${NX_ROOT},${h+NH} ${NX_ROOT},${h+NH-CR} L${NX_ROOT},${h+CR} Q${NX_ROOT},${h} ${NX_ROOT-CR},${h} `;
+    d+=`L${R},${h} Q0,${h} 0,${h-R} L0,${R} Q0,0 ${R},0 Z`;
+  } else {
+    // Root: flat top with rounded corners, bump on bottom
+    d =`M${R},0 L${w-R},0 Q${w},0 ${w},${R} `;
+    d+=`L${w},${h-R} Q${w},${h} ${w-R},${h} `;
+    d+=`L${NX_ROOT+NW_ROOT+CR},${h} Q${NX_ROOT+NW_ROOT},${h} ${NX_ROOT+NW_ROOT},${h+CR} L${NX_ROOT+NW_ROOT},${h+NH-CR} Q${NX_ROOT+NW_ROOT},${h+NH} ${NX_ROOT+NW_ROOT-CR},${h+NH} L${NX_ROOT+CR},${h+NH} Q${NX_ROOT},${h+NH} ${NX_ROOT},${h+NH-CR} L${NX_ROOT},${h+CR} Q${NX_ROOT},${h} ${NX_ROOT-CR},${h} `;
+    d+=`L${R},${h} Q0,${h} 0,${h-R} L0,${R} Q0,0 ${R},0 Z`;
+  }
+  return d;
+}
+function hatPath(w,h){
+  // power block: fully rounded top, bump on bottom shifted to align with child notch
+  let d=`M${R},0 Q0,0 0,${R} `;
+  d+=`L0,${h-R} Q0,${h} ${R},${h} `;
+  d+=`L${NX_ROOT-CR},${h} Q${NX_ROOT},${h} ${NX_ROOT},${h+CR} L${NX_ROOT},${h+NH-CR} Q${NX_ROOT},${h+NH} ${NX_ROOT+CR},${h+NH} L${NX_ROOT+NW_ROOT-CR},${h+NH} Q${NX_ROOT+NW_ROOT},${h+NH} ${NX_ROOT+NW_ROOT},${h+NH-CR} L${NX_ROOT+NW_ROOT},${h+CR} Q${NX_ROOT+NW_ROOT},${h} ${NX_ROOT+NW_ROOT+CR},${h} `;
+  d+=`L${w-R},${h} Q${w},${h} ${w},${h-R} L${w},${R} Q${w},0 ${w-R},0 Z`;
+  return d;
+}
+function headerPath(w,isChild){
+  if(isChild){
+    // Header: flat top with notch down at NX matching parent bump
+    return `M${R},0 L${NX-CR},0 Q${NX},0 ${NX},${CR} L${NX},${NI-CR} Q${NX},${NI} ${NX+CR},${NI} L${NX+NW-CR},${NI} Q${NX+NW},${NI} ${NX+NW},${NI-CR} L${NX+NW},${CR} Q${NX+NW},0 ${NX+NW+CR},0 L${w-R},0 Q${w},0 ${w},${R} L${w},34 L0,34 L0,${R} Q0,0 ${R},0 Z`;
+  }
+  return `M${R},0 L${w-R},0 Q${w},0 ${w},${R} L${w},34 L0,34 L0,${R} Q0,0 ${R},0 Z`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BLOCK COMPONENT  — renders one block + nested children inline
+// ═══════════════════════════════════════════════════════════════
+const BW = 300;   // default block width
+function calcBW(def){
+  const badgeText=def.subcat?def.subcat.replace(/_meta$/,"").toUpperCase()+" "+def.cat.toUpperCase():def.cat==="meta"?"META":def.cat.toUpperCase();
+  const badgeW=badgeText.length*6+28;
+  const nameW=(def.bname||"").length*8;
+  const btnsW=90;
+  const headerW=badgeW+nameW+btnsW+24;
+  // Label col is fixed minWidth:70 in CSS, input is flex:1
+  // Total min = padding(20) + labelCol(70) + gap(6) + inputMin(140) + padding(20) = 256
+  const fieldContentW=256;
+  return Math.min(Math.max(headerW,fieldContentW,260),520);
+}
+const BPH = 8;   // vertical padding inside block body
+const FH  = 26;   // height per field row
+const SLOT_PAD = 8; // padding around slot areas
+
+function ScratchBlock({id,bmap,isChild,isSibling,depth,dispatch,hoveredId,selectedId,setHoveredId,setSelectedId,mouseOverSlot,peerDragColor}){
+  const b=bmap[id]; if(!b)return null;
+  const def=DEFS[b.bname];
+  const subcatKey=def.subcat||""; const baseSubcat=(def.subcat||'').replace(/_meta$/,''); const col=(baseSubcat&&C[baseSubcat])?C[baseSubcat]:(def.subcat&&C[def.subcat])?C[def.subcat]:C[def.cat]||C.meta;
+  const [slotOver,setSlotOver]=useState({});
+
+  const wasDragging=useRef(false);
+
+  const isHat=def.cat==="origin";
+  const isHovered=hoveredId===id;
+  const isSelected=selectedId===id;
+  const fieldRows=def.fields.length;
+  // Header stripe is 34px. Fields sit below with BPH padding top+bottom, FH per row, 2px gap between rows.
+  const fieldsH = fieldRows > 0 ? BPH*2 + fieldRows*FH + (fieldRows-1)*2 : BPH;
+  const bodyH = (isChild&&!isSibling?NI:0) + 34 + (b.collapsed?0:fieldsH);
+
+  // slot rendering helpers
+  // Track global child index across all slots (reset each render)
+  let globalChildIndex=0;
+  function renderSlot(slot,si){
+    const childIds=b.children[slot.key]||[];
+    const slotId=`${id}||${slot.key}`;
+    const isOver=slotOver[si]||(mouseOverSlot===slotId);
+    const showZone=slot.multi||childIds.length===0;
+    // Pick slot color based on the slot key (more specific than accepts[0])
+    const slotColorKey=(()=>{
+      const k=slot.key;
+      if(k.startsWith("bientity"))return"bientity";
+      if(k.startsWith("block"))return"block";
+      if(k.startsWith("item"))return"item";
+      if(k.startsWith("damage"))return"damage";
+      if(k==="entity_action"||k==="action"||k.endsWith("_action"))return"entity";
+      if(k==="entity_condition"||k==="condition"||k.endsWith("_condition"))return"entity";
+      if(k==="landing_condition"||k==="landing_block_condition")return"block";
+      return slot.accepts[0]||"meta";
+    })();
+    const slotCol=C[slotColorKey]||C[slot.accepts[0]]||C.meta;
+
+    function onDragOverSlot(e){e.preventDefault();e.stopPropagation();setSlotOver(s=>({...s,[si]:true}));}
+    function onDragLeaveSlot(e){e.stopPropagation();setSlotOver(s=>({...s,[si]:false}));}
+    function onDropSlot(e){
+      e.preventDefault();e.stopPropagation();
+      setSlotOver(s=>({...s,[si]:false}));
+      const bname=e.dataTransfer.getData("palette");
+      const dragId=e.dataTransfer.getData("blockId");
+      if(bname&&DEFS[bname]&&slot.accepts.includes(DEFS[bname].cat)){
+        dispatch({t:"ADD_CHILD",parentId:id,slotKey:slot.key,bname});
+      } else if(dragId){
+        const did=parseInt(dragId);
+        const db=bmap[did];
+        if(db&&did!==id&&slot.accepts.includes(DEFS[db.bname].cat)){
+          const wasRoot=e.dataTransfer.getData("isRoot")==="1";
+          dispatch({t:"ATTACH",parentId:id,slotKey:slot.key,childId:did,wasRoot});
+        }
+      }
+    }
+
+    return h("div",{key:slot.key,style:{marginLeft:0,position:"relative",marginBottom:8}},
+      // slot label — only show when this slot is empty
+      childIds.length===0&&h("div",{style:{fontSize:9,color:slotCol.light+"cc",fontWeight:600,letterSpacing:"0.05em",
+        fontFamily:"'Segoe UI',sans-serif",marginBottom:3,paddingLeft:2,textTransform:"uppercase"}},
+        slot.label),
+      // children stacked
+      childIds.map((cid,ci)=>{const isFirstOverall=globalChildIndex++===0;return h(ScratchBlock,{key:cid,id:cid,bmap,isChild:isFirstOverall,isSibling:!isFirstOverall,depth:depth+1,dispatch,hoveredId,selectedId,setHoveredId,setSelectedId,mouseOverSlot});}),
+      // extra children auto-wrap hint for single slots
+      !slot.multi&&childIds.length>1&&h("div",{style:{fontSize:9,color:slotCol.light,background:slotCol.dark+"88",borderRadius:4,padding:"2px 8px",margin:"2px 0",fontFamily:"monospace"}},
+        `⚡ ${childIds.length} blocks → auto-wrapped as apoli:and`),
+      // drop zone
+      showZone&&h("div",{
+        "data-slot-id":`${id}||${slot.key}`,
+        "data-accepts":slot.accepts.join(","),
+        onDragOver:onDragOverSlot,onDragLeave:onDragLeaveSlot,onDrop:onDropSlot,
+        style:{
+          height:isOver?40:32,minWidth:160,
+          borderRadius:8,
+          border:`2px dashed ${isOver?slotCol.light:slotCol.border+"88"}`,
+          background:isOver?slotCol.bg+"30":slotCol.dark+"30",
+          display:"flex",alignItems:"center",justifyContent:"center",
+          fontSize:10,color:isOver?slotCol.light:slotCol.border,
+          fontFamily:"'Segoe UI',sans-serif",
+          margin:"4px 0",padding:"0 12px",
+          transition:"all 0.1s",cursor:"default",
+          letterSpacing:"0.02em",
+          boxShadow:isOver?`inset 0 0 0 1px ${slotCol.light}44`:"none",
+        }
+      }, h(Tooltip,{text:`JSON key: "${slot.key}"\nAccepts: ${slot.accepts.join(", ")}\n${slot.multi?"Multiple children allowed":"Single child only"}`,side:"top"},
+        h("span",{style:{cursor:"help"}},childIds.length&&slot.multi?`＋ ${slot.accepts[0]}`:"⬇ "+slot.label)))
+    );
+  }
+
+  const hasSlots=def.slots&&def.slots.length>0;
+  const slotsContent=hasSlots&&!b.collapsed
+    ? h("div",{style:{display:"flex",flexDirection:"column",gap:2}},
+        def.slots.map((slot,si)=>renderSlot(slot,si)))
+    : null;
+
+  const bw=calcBW({...def,bname:b.bname});
+  const svgH=bodyH;
+  const totalSvgH=svgH+NH+2; // bodyH includes socket, + bump at bottom
+
+  return h("div",{
+    style:(isChild||isSibling)
+      ? {position:"relative",marginBottom:0,marginTop:isChild?-NH-2:0,overflow:"visible",
+         outline:isSelected?"2px solid #a78bfa":isHovered?"1.5px solid rgba(167,139,250,0.4)":"none",
+         borderRadius:6}
+      : {position:"absolute",left:b.x,top:b.y,zIndex:depth+1,
+         outline:peerDragColor?`2px solid ${peerDragColor}`:isSelected?"2px solid #a78bfa":isHovered?"1.5px solid rgba(167,139,250,0.4)":"none",
+         boxShadow:peerDragColor?`0 0 12px ${peerDragColor}66`:undefined,
+         borderRadius:6},
+    onMouseEnter:e=>{e.stopPropagation();setHoveredId&&setHoveredId(id);},
+    onMouseLeave:e=>{e.stopPropagation();setHoveredId&&setHoveredId(p=>p===id?null:p);},
+    onClick:e=>{e.stopPropagation();if(wasDragging.current){wasDragging.current=false;return;}setSelectedId&&setSelectedId(p=>p===id?null:id);},
+  },
+    // ── main block ──
+    h("div",{
+      draggable:isChild||isSibling,
+      onMouseDown:e=>{
+        if(e.button!==0)return;
+        e.stopPropagation();
+        e.preventDefault();
+        wasDragging.current=false;
+        if(isChild||isSibling){
+          // Store pending detach — only execute if mouse actually moves
+          window.__pendingDetach={id,mx:e.clientX,my:e.clientY};
+        } else {
+          const b2=bmap[id];
+          dispatch({t:"DRAG_START",id,isRoot:true,e,bx:b2.x,by:b2.y,mx:e.clientX,my:e.clientY});
+        }
+      },
+      onTouchStart:e=>{
+        if(e.target.tagName==="BUTTON"||e.target.tagName==="INPUT"||e.target.tagName==="SELECT")return;
+        e.stopPropagation();
+        const b2=bmap[id];
+        window.__blockTouch&&window.__blockTouch(e,id,b2?b2.x:0,b2?b2.y:0);
+      },
+      onMouseMove:e=>{if(!isChild&&!isSibling)wasDragging.current=true;},
+      onDragStart:e=>{
+        if(!isChild&&!isSibling){e.preventDefault();return;}
+        e.stopPropagation();
+        e.dataTransfer.setData("blockId",String(id));
+        e.dataTransfer.setData("isRoot","0");
+        e.dataTransfer.effectAllowed="move";
+      },
+      style:{position:"relative",display:"block",cursor:"grab",userSelect:"none",
+        overflow:"visible",
+        filter:'drop-shadow(0 3px 8px rgba(0,0,0,0.55))'}
+    },
+      // SVG shape — translated down by NH for child (socket at top)
+      h("svg",{
+        width:bw+4,height:totalSvgH+2,
+        style:{overflow:"visible",display:"block",pointerEvents:"none"}
+      },
+        h("g",{transform:`translate(2,1)`},
+          h("path",{
+            d:isHat?hatPath(bw,svgH):stackPath(bw,svgH,isChild),
+            fill:col.bg,stroke:col.border,strokeWidth:"2"
+          }),
+          // darker header stripe using headerPath
+          h("path",{
+            d:headerPath(bw,isChild),
+            fill:"rgba(0,0,0,0.22)"
+          })
+        )
+      ),
+      // ── header layer (absolutely on top of svg) ──
+      h("div",{style:{
+        position:"absolute",top:(isChild&&!isSibling)?NI+1:1,left:2,width:bw,height:34,
+        display:"flex",alignItems:"center",paddingLeft:10,paddingRight:6,gap:6,
+        pointerEvents:"all"
+      }},
+        // category badge
+        h("div",{style:{
+          background:"rgba(0,0,0,0.35)",borderRadius:10,
+          padding:"2px 8px",fontSize:9,fontWeight:700,
+          color:col.light,letterSpacing:"0.06em",flexShrink:0,fontFamily:"'Segoe UI',sans-serif"
+        }},col.icon+" "+(def.subcat?def.subcat.replace(/_meta$/,"").toUpperCase()+" "+def.cat.toUpperCase():def.cat==="meta"?"META":def.cat.toUpperCase())),
+        // block name
+        h(Tooltip,{text:(def.pt||def.ct||def.at||"")+("\nDouble-click to rename"),side:"top"},
+          h("span",{
+            style:{fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.01em",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif",cursor:"pointer"},
+            onDblClick:e=>{
+              e.stopPropagation();
+              const newName=prompt("Rename block:",b.bname);
+              if(newName&&newName.trim()&&newName.trim()!==b.bname){
+                dispatch({t:"SET",id,key:"__rename",val:newName.trim()});
+              }
+            }
+          }, b.bname)),
+        // buttons
+        isChild&&h("button",{
+          title:"detach to canvas",
+          onMouseDown:e=>e.stopPropagation(),
+          onClick:e=>{e.stopPropagation();dispatch({t:"DETACH",id});},
+          style:{width:20,height:20,borderRadius:10,background:"rgba(250,200,0,0.2)",border:"1px solid rgba(250,200,0,0.4)",cursor:"pointer",color:"#fcd34d",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}
+        },"↑"),
+        h("button",{
+          title:b.collapsed?"expand":"collapse",
+          onMouseDown:e=>e.stopPropagation(),
+          onClick:e=>{e.stopPropagation();dispatch({t:"SET",id,key:"__collapse",val:!b.collapsed});},
+          style:{width:20,height:20,borderRadius:10,background:"rgba(255,255,255,0.12)",border:"none",cursor:"pointer",color:"#fff",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}
+        },b.collapsed?"▸":"▾"),
+        h("button",{
+          title:"delete",
+          onMouseDown:e=>e.stopPropagation(),
+          onClick:e=>{e.stopPropagation();dispatch({t:isChild?"REM_CHILD":"REM_ROOT",id});},
+          style:{width:20,height:20,borderRadius:10,background:"rgba(220,30,30,0.4)",border:"none",cursor:"pointer",color:"#fff",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}
+        },"×")
+      ),
+      // ── field inputs ──
+      !b.collapsed&&def.fields.length>0&&h("div",{style:{
+        position:"absolute",top:((isChild&&!isSibling)?NI:0)+36,left:2,width:bw,
+        padding:`${BPH-2}px 10px`,display:"flex",flexDirection:"column",gap:2,pointerEvents:"all"
+      }},
+        def.fields.map(f=>h("div",{key:f.k,style:{display:"flex",alignItems:"center",minHeight:FH,height:FH,gap:6}},
+          h(Tooltip,{
+            text:`JSON key: "${f.k}"${f.d!==undefined?`\nDefault: ${f.d}`:""}${f.t==="tx"?"\nType: text/string":f.t==="sel"?"\nType: dropdown select":""}`,
+            side:"top"
+          },
+            h("span",{style:{fontSize:10,color:"rgba(255,255,255,0.7)",minWidth:70,textAlign:"right",flexShrink:0,fontFamily:"'Segoe UI',sans-serif",cursor:"help",borderBottom:"1px dotted rgba(255,255,255,0.3)"}},f.l)
+          ),
+          f.t==="sel"
+            ?h("select",{
+                value:b.vals[f.k],
+                onChange:e=>dispatch({t:"SET",id,key:f.k,val:e.target.value}),
+                onMouseDown:e=>e.stopPropagation(),onClick:e=>e.stopPropagation(),
+                title:`JSON key: "${f.k}" — select a value`,
+                style:{flex:1,height:22,fontSize:10,background:col.dark,color:"#fff",border:`1.5px solid ${col.border}`,borderRadius:11,padding:"0 8px",cursor:"pointer",fontFamily:"'Segoe UI',sans-serif"}
+              },f.o.map(o=>h("option",{key:o,value:o},o)))
+            :h("input",{
+                type:"text",value:b.vals[f.k],
+                onChange:e=>dispatch({t:"SET",id,key:f.k,val:e.target.value}),
+                onMouseDown:e=>e.stopPropagation(),onClick:e=>e.stopPropagation(),
+                placeholder:f.d||"",
+                title:`JSON key: "${f.k}"${f.d?` — e.g. ${f.d}`:""}`,
+                style:{flex:1,height:22,fontSize:10,background:col.dark,color:"#fff",border:`1.5px solid ${col.border}`,borderRadius:11,padding:"0 10px",fontFamily:"'Segoe UI',sans-serif"}
+              })
+        ))
+      ),
+      // ── slots — Scratch-style C-block mouth ──
+      !b.collapsed&&slotsContent&&h("div",{style:{
+        marginLeft:4,
+        paddingLeft:10,
+        borderLeft:`3px solid ${col.border}`,
+        borderBottomLeftRadius:6,
+        paddingBottom:4,
+      }},slotsContent)
+    )
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PALETTE MINI BLOCK
+// ═══════════════════════════════════════════════════════════════
+function PalBlock({bname}){
+  const def=DEFS[bname],baseSubcat=(def.subcat||'').replace(/_meta$/,''),col=(baseSubcat&&C[baseSubcat])?C[baseSubcat]:(def.subcat&&C[def.subcat])?C[def.subcat]:C[def.cat]||C.meta;
+  return h("div",{
+    className:"flyout-block",
+    draggable:true,
+    onDragStart:e=>{e.dataTransfer.setData("palette",bname);e.dataTransfer.setData("isRoot","0");},
+    onTouchStart:e=>window.__palTouch&&window.__palTouch(e,bname),
+    title:def.pt||def.ct||def.at||"",
+    style:{
+      background:`linear-gradient(135deg,${col.bg},${col.dark})`,
+      border:`1.5px solid ${col.border}`,
+      borderRadius:8,
+      padding:"6px 10px",
+      marginBottom:4,
+      cursor:"grab",
+      userSelect:"none",
+      display:"flex",
+      alignItems:"center",
+      gap:6,
+      boxShadow:`0 2px 6px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.08)`,
+    }
+  },
+    h("span",{style:{fontSize:9,color:col.light,fontWeight:700,letterSpacing:"0.05em",fontFamily:"'Segoe UI',sans-serif",flexShrink:0}},col.icon),
+    h("span",{style:{fontSize:11,color:"#fff",fontWeight:600,fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},bname)
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATE REDUCER
+// ═══════════════════════════════════════════════════════════════
+let _uid=1;
+function mkB(bname,x=100,y=100){
+  const def=DEFS[bname],vals={};
+  def.fields.forEach(f=>{vals[f.k]=f.d;});
+  return{id:_uid++,bname,x,y,vals,children:{},collapsed:false};
+}
+function findPar(id,bmap,roots){
+  function search(fromId){
+    const b=bmap[fromId]; if(!b)return null;
+    for(const[sk,ids]of Object.entries(b.children||{})){
+      if(ids.includes(id))return{parentId:fromId,slotKey:sk};
+      for(const cid of ids){const r=search(cid);if(r)return r;}
+    }
+    return null;
+  }
+  for(const rid of roots){const r=search(rid);if(r)return r;}
+  return null;
+}
+function delTree(id,bmap){
+  const b=bmap[id]; if(!b)return;
+  Object.values(b.children||{}).flat().forEach(cid=>delTree(cid,bmap));
+  delete bmap[id];
+}
+
+function reducer(state,a){
+  const bmap={...state.bmap};
+  let roots=[...state.roots];
+  switch(a.t){
+    case"DRAG_CANCEL":break; // handled by dragRef.current=null in onMouseUp
+    case"ADD_ROOT":{const b=mkB(a.bname,a.x,a.y);bmap[b.id]=b;roots=[...roots,b.id];break;}
+    case"MOVE_ROOT":{bmap[a.id]={...bmap[a.id],x:a.x,y:a.y};break;}
+    case"REM_ROOT":{delTree(a.id,bmap);roots=roots.filter(x=>x!==a.id);break;}
+    case"SET":{
+      const b={...bmap[a.id]};
+      if(a.key==="__collapse")b.collapsed=a.val;
+      else if(a.key==="__rename")b.bname=a.val;
+      else b.vals={...b.vals,[a.key]:a.val};
+      bmap[a.id]=b;break;
+    }
+    case"ADD_CHILD":{
+      const child=mkB(a.bname);bmap[child.id]=child;
+      const par={...bmap[a.parentId]};
+      par.children={...par.children,[a.slotKey]:[...(par.children[a.slotKey]||[]),child.id]};
+      bmap[par.id]=par;break;
+    }
+    case"ATTACH":{
+      if(a.wasRoot)roots=roots.filter(x=>x!==a.childId);
+      else{
+        const op=findPar(a.childId,bmap,roots);
+        if(op){const p={...bmap[op.parentId]};p.children={...p.children,[op.slotKey]:p.children[op.slotKey].filter(x=>x!==a.childId)};bmap[p.id]=p;}
+      }
+      const par={...bmap[a.parentId]};
+      par.children={...par.children,[a.slotKey]:[...(par.children[a.slotKey]||[]),a.childId]};
+      bmap[par.id]=par;break;
+    }
+    case"REM_CHILD":{
+      const op=findPar(a.id,bmap,roots);
+      if(op){const p={...bmap[op.parentId]};p.children={...p.children,[op.slotKey]:p.children[op.slotKey].filter(x=>x!==a.id)};bmap[p.id]=p;}
+      if(a.becomeRoot){const b={...bmap[a.id],x:a.x||100,y:a.y||100};bmap[b.id]=b;roots=[...roots,b.id];}
+      else delTree(a.id,bmap);break;
+    }
+    case"DETACH":{
+      const op=findPar(a.id,bmap,roots);
+      if(!op)break;
+      const p={...bmap[op.parentId]};p.children={...p.children,[op.slotKey]:p.children[op.slotKey].filter(x=>x!==a.id)};bmap[p.id]=p;
+      bmap[a.id]={...bmap[a.id],x:a.x||80,y:a.y||80};
+      roots=[...roots,a.id];break;
+    }
+    case"PASTE_TREE":{
+      function buildTree(tree){
+        const nb=mkB(tree.bname);
+        nb.vals={...tree.vals};
+        Object.entries(tree.children||{}).forEach(([sk,ctrees])=>{
+          nb.children[sk]=ctrees.map(ct=>{
+            const cb=buildTree(ct);
+            bmap[cb.id]=cb;
+            return cb.id;
+          });
+        });
+        return nb;
+      }
+      const pasted=buildTree(a.tree);
+      pasted.x=a.x; pasted.y=a.y;
+      bmap[pasted.id]=pasted;
+      roots=[...roots,pasted.id];
+      break;
+    }
+    case"CLONE_ROOT":{
+      // deep clone a block tree, assign new ids, place at offset position
+      function cloneTree(id,newBmap){
+        const b=bmap[id]||newBmap[id]; if(!b)return null;
+        const nb={...b,id:++idCounter,x:b.x+40,y:b.y+40,children:{}};
+        Object.entries(b.children||{}).forEach(([sk,cids])=>{
+          nb.children[sk]=cids.map(cid=>cloneTree(cid,newBmap)).filter(Boolean);
+        });
+        newBmap[nb.id]=nb;
+        return nb.id;
+      }
+      const newBmap={...bmap};
+      const newId=cloneTree(a.srcId,newBmap);
+      if(newId!=null){
+        const nb=newBmap[newId];
+        nb.x=a.x; nb.y=a.y;
+        newBmap[newId]=nb;
+        Object.assign(bmap,newBmap);
+        roots=[...roots,newId];
+      }
+      Object.assign(bmap,newBmap);
+      break;
+    }
+    case"RESTORE":{
+      Object.keys(bmap).forEach(k=>delete bmap[k]);
+      Object.assign(bmap,a.snapshot.bmap);
+      roots=a.snapshot.roots;
+      break;
+    }
+    case"IMPORT_JSON":{
+      // Parse JSON object into blocks recursively
+      function findDef2(type, slotKey){
+        // slotKey tells us if we want an action type (at) or condition type (ct) or power (pt)
+        const all = Object.entries(DEFS).filter(([name,def])=>def.pt===type||def.ct===type||def.at===type);
+        if(all.length === 0) return null;
+        if(all.length === 1) return all[0];
+        // Use slot key to disambiguate action vs condition
+        const wantAction = slotKey==='actions'||slotKey==='action'||slotKey==='entity_action'||slotKey==='bientity_action'||slotKey==='if_action'||slotKey==='else_action';
+        const wantCondition = slotKey==='conditions'||slotKey==='condition'||slotKey==='bientity_condition'||slotKey==='entity_condition';
+        if(wantAction){
+          const act = all.find(([n,d])=>d.at===type);
+          if(act) return act;
+        }
+        if(wantCondition){
+          const cond = all.find(([n,d])=>d.ct===type);
+          if(cond) return cond;
+        }
+        // Power type or unknown — prefer pt match, then at, then ct
+        return all.find(([n,d])=>d.pt===type)||all.find(([n,d])=>d.at===type)||all[0];
+      }
+      function parseBlock2(obj,px,py,slotKey){
+        if(!obj||typeof obj!=='object'||!obj.type)return null;
+        const found=findDef2(obj.type,slotKey);
+        if(!found)return null;
+        const [bname,def]=found;
+        const b=mkB(bname);
+        b.x=px; b.y=py;
+        // Fill fields
+        def.fields.forEach(f=>{
+          if(f.k==='name'&&obj.name!==undefined){b.vals.name=String(obj.name);return;}
+          if(obj[f.k]!==undefined&&typeof obj[f.k]!=='object')b.vals[f.k]=String(obj[f.k]);
+        });
+        // apply_effect special case
+        if(obj.type==='origins:apply_effect'&&obj.effect&&typeof obj.effect==='object'){
+          if(obj.effect.effect)b.vals.effect_id=obj.effect.effect;
+          if(obj.effect.duration!==undefined)b.vals.effect_duration=String(obj.effect.duration);
+          if(obj.effect.amplifier!==undefined)b.vals.effect_amplifier=String(obj.effect.amplifier);
+        }
+        // damage source special case
+        if(obj.type==='origins:damage'&&obj.source&&typeof obj.source==='object'){
+          b.vals.source=obj.source.name||'';
+          if(obj.source.bypasses_armor)b.vals.bypasses_armor='true';
+          if(obj.source.fire)b.vals.fire='true';
+        }
+        // Multiple power sub-keys
+        if(def.isMultiple){
+          Object.entries(obj).forEach(([k,v])=>{
+            if(k==='type'||k==='name')return;
+            if(typeof v==='object'&&v!==null&&v.type){
+              const cid=parseBlock2(v,px+40,py+40,"subpowers");
+              if(cid){bmap[cid].vals.name=k;if(!b.children.subpowers)b.children.subpowers=[];b.children.subpowers.push(cid);}
+            }
+          });
+        }
+        // Slots
+        (def.slots||[]).forEach(slot=>{
+          const val=obj[slot.key];
+          if(!val)return;
+          if(slot.multi&&Array.isArray(val)){
+            val.forEach(child=>{
+              if(typeof child==='object'&&child.type){
+                const cid=parseBlock2(child,px+40,py+40,slot.key);
+                if(cid){if(!b.children[slot.key])b.children[slot.key]=[];b.children[slot.key].push(cid);}
+              }
+            });
+          } else if(typeof val==='object'&&val!==null&&val.type){
+            const cid=parseBlock2(val,px+40,py+40,slot.key);
+            if(cid)b.children[slot.key]=[cid];
+          }
+        });
+        bmap[b.id]=b;
+        // Only the top-level call adds to roots — children are referenced via parent.children
+        return b.id;
+      }
+      const rootId=parseBlock2(a.json,a.x||100,a.y||100);
+      if(rootId) roots=[...roots,rootId];
+      break;
+    }
+    default:break;
+  }
+  return{bmap,roots};
+}
+
+// ═══════════════════════════════════════════════════════════════
+// APP
+// ═══════════════════════════════════════════════════════════════
+function App(){
+  const [{bmap,roots},rawDispatch]=useReducer(reducer,{bmap:{},roots:[]});
+  const historyRef=useRef({past:[],future:[]});
+  const [tab,setTab]=useState("editor");
+  const [activeCat,setActiveCat]=useState(null);  // which category flyout is open
+  const [search,setSearch]=useState("");
+  const [copied,setCopied]=useState(false);
+  const [showImport,setShowImport]=useState(false);
+  const [importText,setImportText]=useState("");
+  const [zoom,setZoom]=useState(1.0);
+  const MIN_ZOOM=0.25, MAX_ZOOM=2.0, ZOOM_STEP=0.1;
+  const [collab,setCollab]=useState({active:false,isHost:false,roomCode:'',peers:[],status:'',nickname:''});
+  const collabRef=useRef({peer:null,conns:[]});
+  const [remoteCursors,setRemoteCursors]=useState({});   // {connId:{x,y,nickname,color}}
+
+  const [trashHover,setTrashHover]=useState(false);
+  const [selectedId,setSelectedId]=useState(null);   // block selected for copy (Ctrl+C)
+  const [clipboard,setClipboard]=useState(null);      // copied block tree {bname, vals, children subtree}
+  const [hoveredId,setHoveredId]=useState(null);
+  const canvasRef=useRef(null);
+  const panRef=useRef({active:false,startX:0,startY:0,tx:0,ty:0});
+  const editingPowerId=useRef(null);
+  const [remoteDrags,setRemoteDrags]=useState({});
+  const [chatUnread,setChatUnread]=useState(0); // {peerId:{id,x,y}} // set by manager when opening a power
+  const [pan,setPan]=useState({x:0,y:0});
+  const dragRef=useRef(null);
+  const touchRef=useRef(null);
+  const cursorPos=useRef({x:200,y:200});              // last known canvas cursor position
+  const [mouseOverSlot,setMouseOverSlotApp]=useState(null);
+  window.__setMouseOverSlot=(sid)=>setMouseOverSlotApp(sid);
+
+  // wrap dispatch to intercept DRAG_START/CANCEL and save undo history
+  function dispatch(a){
+    if(a.t==="DRAG_CANCEL"){dragRef.current=null;return;}
+    if(a.t==="DRAG_START"){
+      if(a.isRoot) dragRef.current={id:a.id,mx:a.mx,my:a.my,bx:a.bx,by:a.by,active:true};
+      return;
+    }
+    const skipUndo=a.t==="MOVE_ROOT"||a.t==="SET";
+    if(!skipUndo){
+      historyRef.current.past.push(JSON.stringify({bmap,roots}));
+      historyRef.current.future=[];
+      if(historyRef.current.past.length>50) historyRef.current.past.shift();
+    }
+    rawDispatch(a);
+    // Broadcast structural changes to peers (not drag/move)
+    if(!window.__applyingPeerAction && a.t!=='MOVE_ROOT'){
+      window.parent.postMessage({type:'EDITOR_ACTION',action:a,powerId:editingPowerId.current},'*');
+    }
+  }
+
+  function onCanvasDrop(e){
+    e.preventDefault();setTrashHover(false);
+    const rect=canvasRef.current.getBoundingClientRect();
+    const x=(e.clientX-rect.left-pan.x)/zoom-20;
+    const y=(e.clientY-rect.top-pan.y)/zoom-20;
+    const bname=e.dataTransfer.getData("palette");
+    if(bname&&DEFS[bname]){
+      dispatch({t:"ADD_ROOT",bname,x,y});
+      setActiveCat(null);
+    }
+  }
+
+  function onCanvasMouseMove(e){
+    // Pan with middle mouse
+    if(panRef.current.active){
+      const nx=panRef.current.tx+(e.clientX-panRef.current.startX);
+      const ny=panRef.current.ty+(e.clientY-panRef.current.startY);
+      setPan({x:nx,y:ny});
+    }
+
+    // Broadcast cursor to collab peers
+    if(collab.active&&(!collabRef.current._lastCursor||Date.now()-collabRef.current._lastCursor>50)){
+      collabRef.current._lastCursor=Date.now();
+      if(canvasRef.current){
+        const r=canvasRef.current.getBoundingClientRect();
+        const x=Math.round((e.clientX-r.left-pan.x)/zoom);
+        const y=Math.round((e.clientY-r.top-pan.y)/zoom);
+        collabRef.current.conns.forEach(conn=>{try{conn.send({type:'CURSOR',x,y,nickname:collab.nickname||'Host'});}catch(e){}});
+      }
+    }
+
+    // track cursor position relative to canvas
+    if(canvasRef.current){
+      const r=canvasRef.current.getBoundingClientRect();
+      cursorPos.current={x:e.clientX-r.left, y:e.clientY-r.top};
+    }
+
+    const dr=dragRef.current;
+    if(!dr||!dr.active)return;
+    const nx=dr.bx+(e.clientX-dr.mx)/zoom;
+    const ny=dr.by+(e.clientY-dr.my)/zoom;
+    dr.lastX=nx; dr.lastY=ny;
+
+    rawDispatch({t:"MOVE_ROOT",id:dr.id,x:nx,y:ny});
+    // Broadcast drag position to peers (throttled 30ms)
+    if(!window.__applyingPeerAction){
+      const now=Date.now();
+      if(!dr._lastBroadcast||now-dr._lastBroadcast>60){
+        dr._lastBroadcast=now;
+        window.parent.postMessage({type:'EDITOR_DRAG_MOVE',id:dr.id,x:nx,y:ny,
+          powerId:editingPowerId.current},'*');
+      }
+    }
+    let foundSlot=null;
+    document.querySelectorAll('[data-slot-id]').forEach(el=>{
+      const r=el.getBoundingClientRect();
+      if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom) foundSlot=el.dataset.slotId;
+    });
+    window.__setMouseOverSlot&&window.__setMouseOverSlot(foundSlot);
+  }
+
+  function onCanvasMouseUp(e){
+    // End pan
+    if(e.button===1){
+      panRef.current.active=false;
+      if(canvasRef.current) canvasRef.current.style.cursor='';
+      return;
+    }
+    window.__setMouseOverSlot&&window.__setMouseOverSlot(null);
+    const dr=dragRef.current;
+    if(dr){
+      const els=document.elementsFromPoint(e.clientX,e.clientY);
+      for(const el of els){
+        const sid=el.dataset&&el.dataset.slotId;
+        if(sid){
+          const [pid,sk]=sid.split("||");
+          const parentId=parseInt(pid);
+          const accepts=(el.dataset.accepts||"").split(",");
+          const b=bmap[dr.id];
+          if(b&&accepts.includes(DEFS[b.bname].cat)){
+            dispatch({t:"ATTACH",parentId,slotKey:sk,childId:dr.id,wasRoot:true});
+          }
+          break;
+        }
+      }
+    }
+    // Send final position to peers on drag end
+    if(!window.__applyingPeerAction && dragRef.current) {
+      const finalId = dragRef.current.id;
+      const finalX = dragRef.current.lastX ?? bmap[finalId]?.x;
+      const finalY = dragRef.current.lastY ?? bmap[finalId]?.y;
+      if(finalX != null && finalY != null) {
+        window.parent.postMessage({type:'EDITOR_DRAG_END',id:finalId,x:finalX,y:finalY,
+          powerId:editingPowerId.current},'*');
+      }
+    }
+    dragRef.current=null;
+    window.__pendingDetach=null;
+  }
+
+  // ── Touch support ───────────────────────────────────────────────────────
+  function createGhost(label,col){
+    const g=document.createElement("div");
+    g.style.cssText=`position:fixed;z-index:99999;pointer-events:none;opacity:0.85;
+      background:${col||"#3a3a5c"};color:#fff;padding:6px 14px;border-radius:10px;
+      font-size:12px;font-weight:700;font-family:'Segoe UI',sans-serif;
+      box-shadow:0 4px 16px rgba(0,0,0,0.6);border:2px solid rgba(255,255,255,0.2);
+      white-space:nowrap;transform:translate(-50%,-50%);transition:none;`;
+    g.textContent=label;
+    document.body.appendChild(g);
+    return g;
+  }
+
+  function moveGhost(ghost,x,y){
+    if(ghost){ghost.style.left=x+"px";ghost.style.top=y+"px";}
+  }
+
+  function removeGhost(ghost){
+    if(ghost&&ghost.parentNode)ghost.parentNode.removeChild(ghost);
+  }
+
+  function getSlotUnderTouch(x,y){
+    // find the slot drop zone div under a touch point
+    const els=document.elementsFromPoint(x,y);
+    for(const el of els){
+      const sid=el.dataset&&el.dataset.slotId;
+      if(sid){
+        const [pid,sk]=sid.split("||");
+        return {parentId:parseInt(pid),slotKey:sk,el,accepts:(el.dataset.accepts||"").split(",")};
+      }
+    }
+    return null;
+  }
+
+  function onPalTouchStart(e,bname){
+    e.preventDefault();
+    const t=e.touches[0];
+    const def=DEFS[bname];
+    const col=((def.subcat&&C[def.subcat.replace(/_meta$/,"")])||C[def.cat]||C.meta).bg;
+    const ghost=createGhost(bname,col);
+    moveGhost(ghost,t.clientX,t.clientY);
+    touchRef.current={type:"palette",bname,ghost};
+  }
+
+  function onBlockTouchStart(e,id,bx,by){
+    if(e.target.tagName==="BUTTON"||e.target.tagName==="INPUT"||e.target.tagName==="SELECT")return;
+    e.preventDefault();
+    const t=e.touches[0];
+    const b=bmap[id];
+    const col=((b&&DEFS[b.bname])?((DEFS[b.bname].subcat&&C[DEFS[b.bname].subcat.replace(/_meta$/,"")])||C[DEFS[b.bname].cat]||C.meta).bg:"#3a3a5c");
+    const ghost=createGhost(b?b.bname:"block",col);
+    moveGhost(ghost,t.clientX,t.clientY);
+    const wasRoot=roots.includes(id);
+    touchRef.current={type:"block",id,ghost,bx,by,startX:t.clientX,startY:t.clientY,wasRoot};
+  }
+
+  function onTouchMove(e){
+    e.preventDefault();
+    const tr=touchRef.current; if(!tr)return;
+    const t=e.touches[0];
+    moveGhost(tr.ghost,t.clientX,t.clientY);
+    // also move root block live
+    if(tr.type==="block"&&tr.wasRoot&&canvasRef.current){
+      const r=canvasRef.current.getBoundingClientRect();
+      const nx=tr.bx+(t.clientX-tr.startX);
+      const ny=tr.by+(t.clientY-tr.startY);
+      rawDispatch({t:"MOVE_ROOT",id:tr.id,x:nx,y:ny});
+    }
+  }
+
+  function onTouchEnd(e){
+    const tr=touchRef.current; if(!tr){return;}
+    const t=e.changedTouches[0];
+    removeGhost(tr.ghost);
+    touchRef.current=null;
+
+    const slot=getSlotUnderTouch(t.clientX,t.clientY);
+
+    if(tr.type==="palette"){
+      if(slot&&slot.accepts.includes(DEFS[tr.bname].cat)){
+        // drop into slot
+        dispatch({t:"ADD_CHILD",parentId:slot.parentId,slotKey:slot.slotKey,bname:tr.bname});
+      } else if(canvasRef.current){
+        // drop onto canvas
+        const r=canvasRef.current.getBoundingClientRect();
+        if(t.clientX>r.left&&t.clientX<r.right&&t.clientY>r.top&&t.clientY<r.bottom){
+          const x=Math.max(8,t.clientX-r.left-20);
+          const y=Math.max(8,t.clientY-r.top-20);
+          dispatch({t:"ADD_ROOT",bname:tr.bname,x,y});
+          setActiveCat(null);
+        }
+      }
+    } else if(tr.type==="block"){
+      if(slot&&slot.accepts.includes(DEFS[bmap[tr.id]?.bname]?.cat)){
+        dispatch({t:"ATTACH",parentId:slot.parentId,slotKey:slot.slotKey,childId:tr.id,wasRoot:tr.wasRoot});
+      }
+      // if no slot, root block already moved live — nothing else needed
+    }
+  }
+
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────
+  useEffect(()=>{
+    function onKey(e){
+      const tag=document.activeElement?.tagName;
+      const inInput=tag==="INPUT"||tag==="SELECT"||tag==="TEXTAREA";
+
+      // Ctrl+Z undo
+      if((e.ctrlKey||e.metaKey)&&e.key==="z"&&!e.shiftKey&&!inInput){
+        e.preventDefault();
+        const past=historyRef.current.past;
+        if(past.length===0)return;
+        const snapshot=JSON.parse(past.pop());
+        historyRef.current.future.push(JSON.stringify({bmap,roots}));
+        rawDispatch({t:"RESTORE",snapshot});
+        return;
+      }
+      // Ctrl+= zoom in, Ctrl+- zoom out, Ctrl+0 reset (keep keyboard shortcuts)
+      if((e.ctrlKey||e.metaKey)&&(e.key==="="||e.key==="+")){
+        e.preventDefault();
+        const el=canvasRef.current;
+        if(el){const cx=el.clientWidth/2,cy=el.clientHeight/2;
+          setZoom(z=>{const nz=Math.min(MAX_ZOOM,parseFloat((z+ZOOM_STEP).toFixed(2)));
+            setPan(p=>({x:cx-(cx-p.x)*nz/z,y:cy-(cy-p.y)*nz/z}));return nz;});}
+        return;
+      }
+      if((e.ctrlKey||e.metaKey)&&e.key==="-"){
+        e.preventDefault();
+        const el=canvasRef.current;
+        if(el){const cx=el.clientWidth/2,cy=el.clientHeight/2;
+          setZoom(z=>{const nz=Math.max(MIN_ZOOM,parseFloat((z-ZOOM_STEP).toFixed(2)));
+            setPan(p=>({x:cx-(cx-p.x)*nz/z,y:cy-(cy-p.y)*nz/z}));return nz;});}
+        return;
+      }
+      if((e.ctrlKey||e.metaKey)&&e.key==="0"){
+        e.preventDefault();
+        setZoom(1.0);setPan({x:0,y:0});
+        return;
+      }
+
+      // Ctrl+Y / Ctrl+Shift+Z redo
+      if((e.ctrlKey||e.metaKey)&&(e.key==="y"||(e.key==="z"&&e.shiftKey))&&!inInput){
+        e.preventDefault();
+        const future=historyRef.current.future;
+        if(future.length===0)return;
+        const snapshot=JSON.parse(future.pop());
+        historyRef.current.past.push(JSON.stringify({bmap,roots}));
+        rawDispatch({t:"RESTORE",snapshot});
+        return;
+      }
+
+      // Delete key — delete selected or hovered block
+      if(e.key==="Delete"&&!inInput){
+        const hid=selectedId||hoveredId;
+        if(hid==null)return;
+        e.preventDefault();
+        if(roots.includes(hid)){
+          dispatch({t:"REM_ROOT",id:hid});
+        } else {
+          dispatch({t:"REM_CHILD",id:hid});
+        }
+        setHoveredId(null);
+        setSelectedId(null);
+      }
+
+      // Ctrl+C — copy selected/hovered block
+      if((e.ctrlKey||e.metaKey)&&e.key==="c"&&!inInput){
+        const cid=selectedId||hoveredId;
+        if(cid==null||!bmap[cid])return;
+        e.preventDefault();
+        // deep-copy the block tree into clipboard state
+        function copyTree(id){
+          const b=bmap[id]; if(!b)return null;
+          const copy={bname:b.bname,vals:{...b.vals},children:{}};
+          Object.entries(b.children||{}).forEach(([sk,cids])=>{
+            copy.children[sk]=cids.map(copyTree).filter(Boolean);
+          });
+          return copy;
+        }
+        setClipboard(copyTree(cid));
+        setSelectedId(cid);
+      }
+
+      // Ctrl+V — paste clipboard at cursor
+      if((e.ctrlKey||e.metaKey)&&e.key==="v"&&!inInput){
+        if(!clipboard)return;
+        e.preventDefault();
+        const {x,y}=cursorPos.current;
+        // deep paste: dispatch a special action that rebuilds the full tree
+        dispatch({t:"PASTE_TREE",tree:clipboard,x:x-20,y:y-20});
+      }
+    }
+    window.addEventListener("keydown",onKey);
+    return()=>window.removeEventListener("keydown",onKey);
+  },[hoveredId,selectedId,clipboard,roots,bmap]);
+
+  // Reload page when settings are updated externally
+  useEffect(()=>{
+    function onStorage(e){
+      if(e.key==='origins-settings-updated') window.location.reload();
+    }
+    window.addEventListener('storage',onStorage);
+    return()=>window.removeEventListener('storage',onStorage);
+  },[]);
+
+  useEffect(()=>{
+    function onWindowMouseMove(e){
+      try{
+      // Handle pending detach globally (child block drag-out)
+      if(window.__pendingDetach){
+        const pd=window.__pendingDetach;
+        const dx=e.clientX-pd.mx, dy=e.clientY-pd.my;
+        if(Math.sqrt(dx*dx+dy*dy)>4){
+          window.__pendingDetach=null;
+          const canvasEl=document.querySelector('.canvas-area');
+          let ex=100,ey=100;
+          if(canvasEl){const cr=canvasEl.getBoundingClientRect();ex=Math.max(0,pd.mx-cr.left-20);ey=Math.max(0,pd.my-cr.top-20);}
+          dispatch({t:"DETACH",id:pd.id,x:ex,y:ey});
+          dragRef.current={id:pd.id,mx:pd.mx,my:pd.my,bx:ex,by:ey,active:true};
+        }
+      }
+      }catch(err){console.error("pendingDetach error:",err,err.stack);}
+    }
+    function onWindowMouseUp(){
+      if(window.__pendingDetach) window.__pendingDetach=null;
+    }
+    window.addEventListener("mousemove",onWindowMouseMove);
+    window.addEventListener("mouseup",onWindowMouseUp);
+    window.addEventListener("touchmove",onTouchMove,{passive:false});
+    window.addEventListener("touchend",onTouchEnd,{passive:false});
+    return()=>{
+      window.removeEventListener("mousemove",onWindowMouseMove);
+      window.removeEventListener("mouseup",onWindowMouseUp);
+      window.removeEventListener("touchmove",onTouchMove);
+      window.removeEventListener("touchend",onTouchEnd);
+    };
+  });
+
+  window.__palTouch=onPalTouchStart;
+  window.__blockTouch=onBlockTouchStart;
+
+  // ── JSON → Blocks parser ────────────────────────────────────────────────
+  function j2b(json, dispatch, bmap, roots){
+    // Parse a JSON object into blocks and add to canvas
+    // Returns the root block id or null
+    try {
+      const obj = typeof json === 'string' ? JSON.parse(json) : json;
+      const id = parseBlock(obj, dispatch);
+      return id;
+    } catch(e) {
+      console.error('JSON parse error:', e);
+      return null;
+    }
+
+    function findDef(type){
+      // Find DEFS entry by pt, ct, or at matching type
+      return Object.entries(DEFS).find(([name, def]) =>
+        def.pt === type || def.ct === type || def.at === type
+      );
+    }
+
+    function parseBlock(obj, dispatch, x=100, y=100){
+      if(!obj || typeof obj !== 'object') return null;
+      const type = obj.type;
+      if(!type) return null;
+
+      const found = findDef(type);
+      if(!found) {
+        console.warn('Unknown block type:', type);
+        return null;
+      }
+      const [bname, def] = found;
+
+      // Create block
+      const b = mkB(bname);
+      b.x = x; b.y = y;
+
+      // Fill field values
+      def.fields.forEach(f => {
+        const key = f.k;
+        if(key === 'name' && obj.name !== undefined) { b.vals.name = String(obj.name); return; }
+        if(obj[key] !== undefined && typeof obj[key] !== 'object') {
+          b.vals[key] = String(obj[key]);
+        }
+      });
+
+      // Special case: apply_effect nested object
+      if(type === 'origins:apply_effect' && obj.effect && typeof obj.effect === 'object'){
+        if(obj.effect.effect) b.vals.effect_id = obj.effect.effect;
+        if(obj.effect.duration !== undefined) b.vals.effect_duration = String(obj.effect.duration);
+        if(obj.effect.amplifier !== undefined) b.vals.effect_amplifier = String(obj.effect.amplifier);
+        if(obj.effect.is_ambient) b.vals.effect_is_ambient = 'true';
+        if(obj.effect.show_particles === false) b.vals.effect_show_particles = 'false';
+        if(obj.effect.show_icon === false) b.vals.effect_show_icon = 'false';
+      }
+
+      // Special case: stacking_status_effect
+      if(type === 'origins:stacking_status_effect' && obj.effect && typeof obj.effect === 'object'){
+        if(obj.effect.effect) b.vals.effect_id = obj.effect.effect;
+        if(obj.effect.amplifier !== undefined) b.vals.effect_amplifier = String(obj.effect.amplifier);
+      }
+
+      // Special case: damage source
+      if(type === 'origins:damage' && obj.source && typeof obj.source === 'object'){
+        b.vals.source = obj.source.name || '';
+        if(obj.source.bypasses_armor) b.vals.bypasses_armor = 'true';
+        if(obj.source.fire) b.vals.fire = 'true';
+        if(obj.source.projectile) b.vals.is_projectile = 'true';
+        if(obj.source.magic) b.vals.is_magic = 'true';
+        if(obj.source.unblockable) b.vals.unblockable = 'true';
+      }
+
+      // Special case: Multiple power — sub-power keys become named children
+      if(def.isMultiple){
+        const subSlot = def.slots?.find(s => s.key === 'subpowers');
+        if(subSlot){
+          Object.entries(obj).forEach(([k, v]) => {
+            if(k === 'type' || k === 'name') return;
+            if(typeof v === 'object' && v !== null && v.type){
+              const childId = parseBlock(v, dispatch, x+40, y+40);
+              if(childId){
+                if(!b.children.subpowers) b.children.subpowers = [];
+                // Set the sub-power name to its key
+                bmap[childId].vals.name = k;
+                b.children.subpowers.push(childId);
+              }
+            }
+          });
+        }
+      }
+
+      // Parse slots — match slot keys to obj keys
+      (def.slots || []).forEach(slot => {
+        const val = obj[slot.key];
+        if(!val) return;
+
+        if(slot.multi && Array.isArray(val)){
+          // Multi-slot: array of child objects
+          val.forEach(child => {
+            if(typeof child === 'object' && child.type){
+              const childId = parseBlock(child, dispatch, x+40, y+40);
+              if(childId){
+                if(!b.children[slot.key]) b.children[slot.key] = [];
+                b.children[slot.key].push(childId);
+              }
+            }
+          });
+        } else if(typeof val === 'object' && val !== null && val.type){
+          // Single slot: one child object
+          const childId = parseBlock(val, dispatch, x+40, y+40);
+          if(childId){
+            b.children[slot.key] = [childId];
+          }
+        }
+      });
+
+      // Add block to bmap and roots
+      bmap[b.id] = b;
+      roots.push(b.id);
+      return b.id;
+    }
+  }
+
+  // ── Collaboration ────────────────────────────────────────────────────────
+      function broadcastAction(action){
+    collabRef.current.conns.forEach(conn=>{
+      try{ conn.send({type:'ACTION',action}); }catch(e){}
+    });
+  }
+
+
+
+        // ── postMessage bridge for file manager ───────────────────────────────
+  useEffect(()=>{
+    function onMessage(e){
+
+      if(e.data?.type==="PEER_DRAG_MOVE"){
+        if(dragRef.current&&dragRef.current.id===e.data.id) return;
+        window.__applyingPeerAction=true;
+        rawDispatch({t:"MOVE_ROOT",id:e.data.id,x:e.data.x,y:e.data.y});
+        window.__applyingPeerAction=false;
+        setRemoteDrags(d=>({...d,[e.data.peerId||'peer']:{id:e.data.id,color:e.data.color||'#7c5ce7'}}));
+        return;
+      }
+      if(e.data?.type==="PEER_DRAG_END"){
+        // Apply final position and clear marker
+        window.__applyingPeerAction=true;
+        rawDispatch({t:"MOVE_ROOT",id:e.data.id,x:e.data.x,y:e.data.y});
+        window.__applyingPeerAction=false;
+        setRemoteDrags(d=>{const n={...d};delete n[e.data.peerId||'peer'];return n;});
+        return;
+      }
+      if(e.data?.type==="PEER_ACTION"){
+        if(e.data.senderId&&e.data.senderId===window.__myPeerId) return;
+        const a=e.data.action;
+        if(a.t==="MOVE_ROOT"&&dragRef.current&&dragRef.current.id===a.id) return;
+        window.__applyingPeerAction=true;
+        rawDispatch(a);
+        window.__applyingPeerAction=false;
+        return;
+      }
+      if(e.data?.type==="REQUEST_CANVAS_STATE"){
+        const state=JSON.stringify({bmap,roots});
+        window.parent.postMessage({type:'CANVAS_STATE_RESPONSE',state,powerId:e.data.powerId},'*');
+        return;
+      }
+      if(e.data?.type==="REQUEST_JSON"){
+        const powerRoots=roots.filter(id=>bmap[id]&&DEFS[bmap[id].bname]?.cat==="power");
+        if(powerRoots.length===0){window.parent.postMessage({type:"POWER_JSON",json:null,powerType:null,state:null},"*");return;}
+        const f=genFiles(powerRoots,bmap);
+        if(f.length===0){window.parent.postMessage({type:"POWER_JSON",json:null,powerType:null,state:null},"*");return;}
+        const json=JSON.stringify(f[0].json,null,2);
+        const powerType=f[0].json?.type||null;
+        // Also send full editor state for reloading later
+        const state=JSON.stringify({bmap,roots});
+        window.parent.postMessage({type:"POWER_JSON",json,powerType,state},"*");
+      }
+      if(e.data?.type==="SET_PEER_ID"){
+        window.__myPeerId=e.data.peerId;
+        return;
+      }
+      if(e.data?.type==="CHAT_BADGE"){
+        setChatUnread(e.data.unread||0);
+        return;
+      }
+
+      if(e.data?.type==="LOAD_POWER"){
+        if(e.data.powerId) editingPowerId.current=e.data.powerId;
+        if(e.data.json){
+          try{
+            const snap=JSON.parse(e.data.json);
+            if(snap&&snap.bmap&&snap.roots){
+              rawDispatch({t:"RESTORE",snapshot:snap});
+            }
+          }catch(err){console.warn("Could not restore power state:",err);}
+        } else {
+          rawDispatch({t:"RESTORE",snapshot:{bmap:{},roots:[]}});
+        }
+      }
+    }
+    window.addEventListener("message",onMessage);
+    return()=>window.removeEventListener("message",onMessage);
+  },[roots,bmap]);
+
+  const files=genFiles(roots,bmap);
+  const jsonText=files.map(f=>`// ${f.name}\n${JSON.stringify(f.json,null,2)}`).join("\n\n---\n\n");
+
+  // build flyout content
+  const flyoutSections=activeCat==="search"
+    ? [{label:`Search results`,keys:SECTIONS.flatMap(s=>s.keys).filter(k=>k.toLowerCase().includes(search.toLowerCase()))}]
+    : activeCat
+      ? SECTIONS.filter(s=>s.cat===activeCat||(activeCat==="meta"&&s.cat==="meta"))
+      : search
+        ? [{label:"Search results",keys:SECTIONS.flatMap(s=>s.keys).filter(k=>k.toLowerCase().includes(search.toLowerCase()))}]
+        : [];
+
+  const catGroups=[
+    {id:"power",    col:C.power,    label:"Power"},
+    {id:"condition",col:C.condition,label:"Cond."},
+    {id:"action",   col:C.action,   label:"Action"},
+    {id:"meta",     col:C.meta,     label:"Meta"},
+  ];
+
+  return h("div",{style:{display:"flex",flexDirection:"column",height:"100vh",background:"#1a1a2e"}},
+    // ── TOPBAR ──────────────────────────────────────────────
+    h("div",{style:{height:46,display:"flex",alignItems:"center",padding:"0 16px",background:"#12122a",borderBottom:"1px solid #ffffff10",gap:12,flexShrink:0,zIndex:200}},
+      h("div",{style:{display:"flex",gap:5}},[["#ff5f57"],["#febc2e"],["#28c840"]].map(([c],i)=>h("div",{key:i,style:{width:12,height:12,borderRadius:"50%",background:c}}))),
+      h("span",{style:{fontSize:12,fontWeight:700,color:"#4a4a7a",letterSpacing:"0.1em",marginLeft:6,fontFamily:"'Segoe UI',sans-serif"}},"ORIGINS BUILDER"),
+      h("span",{style:{fontSize:11,color:S.accent+"88",marginLeft:8,cursor:"pointer",fontFamily:"'Segoe UI',sans-serif",textDecoration:"none"},onClick:()=>window.location.href="origins-guide.html"},"? Guide"),
+      h("div",{style:{flex:1}}),
+      h("div",{style:{display:"flex",gap:4}},
+        ["editor","json"].map(t=>h("button",{key:t,onClick:()=>{setTab(t);setActiveCat(null);},
+          style:{background:tab===t?"#2d2b52":"transparent",border:`1.5px solid ${tab===t?S.accent:"#ffffff15"}`,color:tab===t?S.accent+"cc":"#4a4a7a",borderRadius:8,padding:"4px 14px",fontSize:11,cursor:"pointer",fontFamily:"'Segoe UI',sans-serif",fontWeight:600}},
+          t==="editor"?"✏ EDITOR":"{ } JSON"))
+      ),
+      h("button",{
+        onClick:()=>{
+          if(!jsonText){alert("No origin or power blocks on canvas to export.");return;}
+          if(navigator.clipboard&&navigator.clipboard.writeText){
+            navigator.clipboard.writeText(jsonText)
+              .then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1600);})
+              .catch(()=>{
+                // fallback: select a textarea
+                const ta=document.createElement("textarea");
+                ta.value=jsonText;ta.style.position="fixed";ta.style.opacity="0";
+                document.body.appendChild(ta);ta.select();
+                document.execCommand("copy");document.body.removeChild(ta);
+                setCopied(true);setTimeout(()=>setCopied(false),1600);
+              });
+          } else {
+            // no clipboard API — fallback
+            const ta=document.createElement("textarea");
+            ta.value=jsonText;ta.style.position="fixed";ta.style.opacity="0";
+            document.body.appendChild(ta);ta.select();
+            document.execCommand("copy");document.body.removeChild(ta);
+            setCopied(true);setTimeout(()=>setCopied(false),1600);
+          }
+        },
+        style:{background:copied?"#065f46":"#2d2b52",border:`1.5px solid ${copied?"#10b981":S.accent}`,color:copied?"#fff":S.accent+"cc",borderRadius:8,padding:"4px 14px",fontSize:11,cursor:jsonText?"pointer":"not-allowed",fontFamily:"'Segoe UI',sans-serif",fontWeight:600,transition:"all 0.2s",opacity:jsonText?1:0.4}
+      },copied?"✓ COPIED":"⬇ COPY JSON"),
+      h("button",{
+        onClick:()=>setShowImport(v=>!v),
+        style:{background:"#2d2b52",border:`1.5px solid ${S.accent}`,color:S.accent+"cc",borderRadius:8,padding:"4px 14px",fontSize:11,cursor:"pointer",fontFamily:"'Segoe UI',sans-serif",fontWeight:600}
+      },"⬆ IMPORT JSON"),
+      h("div",{style:{display:"flex",alignItems:"center",gap:4,background:"#1a1a2e",border:`1px solid ${S.accent}33`,borderRadius:8,padding:"2px 6px"}},
+        h("button",{onClick:()=>{const el=canvasRef.current;if(el){const cx=el.clientWidth/2,cy=el.clientHeight/2;setZoom(z=>{const nz=Math.max(MIN_ZOOM,parseFloat((z-ZOOM_STEP).toFixed(2)));setPan(p=>({x:cx-(cx-p.x)*nz/z,y:cy-(cy-p.y)*nz/z}));return nz;});}},style:{background:"none",border:"none",color:S.accent+"cc",fontSize:14,cursor:"pointer",padding:"2px 4px",lineHeight:1}},"−"),
+        h("span",{style:{fontSize:10,color:S.accent+"cc",fontFamily:"'JetBrains Mono',monospace",minWidth:36,textAlign:"center"}},Math.round(zoom*100)+"%"),
+        h("button",{onClick:()=>{const el=canvasRef.current;if(el){const cx=el.clientWidth/2,cy=el.clientHeight/2;setZoom(z=>{const nz=Math.min(MAX_ZOOM,parseFloat((z+ZOOM_STEP).toFixed(2)));setPan(p=>({x:cx-(cx-p.x)*nz/z,y:cy-(cy-p.y)*nz/z}));return nz;});}},style:{background:"none",border:"none",color:S.accent+"cc",fontSize:14,cursor:"pointer",padding:"2px 4px",lineHeight:1}},"＋"),
+        h("button",{onClick:()=>{setZoom(1.0);setPan({x:0,y:0});},title:"Reset zoom (Ctrl+0)",style:{background:"none",border:"none",color:S.accent+"55",fontSize:10,cursor:"pointer",padding:"2px 4px",lineHeight:1,fontFamily:"'Segoe UI',sans-serif"}},"⊙"),
+      ),
+      // Chat button (only when in collab session)
+      collab.active&&h("div",{style:{position:"relative",marginLeft:8}},
+        h("button",{
+          onClick:()=>window.parent.postMessage({type:'OPEN_CHAT'},'*'),
+          style:{background:"#2d2b52",border:`1.5px solid ${S.accent}`,color:S.accent+"cc",
+            borderRadius:8,padding:"4px 12px",fontSize:11,cursor:"pointer",
+            fontFamily:"'Segoe UI',sans-serif",fontWeight:600,position:"relative"}
+        },
+          "💬 Chat",
+          chatUnread>0&&h("span",{style:{position:"absolute",top:-6,right:-6,
+            background:"#ef4444",color:"#fff",borderRadius:"50%",
+            width:16,height:16,fontSize:9,fontWeight:700,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontFamily:"'Segoe UI',sans-serif"}},chatUnread>9?"9+":chatUnread)
+        )
+      )
+    ),
+
+    // ── IMPORT MODAL ──────────────────────────────────────────
+    showImport&&h("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"},
+      onClick:e=>{if(e.target===e.currentTarget){setShowImport(false);setImportText("");}}},
+      h("div",{style:{background:"#1a1a2e",border:"1px solid #ffffff15",borderRadius:12,padding:24,width:520,maxWidth:"90vw",display:"flex",flexDirection:"column",gap:12}},
+        h("div",{style:{fontSize:14,fontWeight:700,color:"#fff",marginBottom:4}},"Import JSON → Blocks"),
+        h("div",{style:{fontSize:11,color:"#64748b"}},"Paste a power, action, or condition JSON. Nested objects become child blocks automatically."),
+        h("textarea",{
+          value:importText,
+          onChange:e=>setImportText(e.target.value),
+          placeholder:'{\n  "type": "origins:active_self",\n  ...\n}',
+          style:{width:"100%",height:220,background:"#0d0d1a",border:"1px solid #ffffff15",borderRadius:8,
+            padding:12,color:"#e2e8f0",fontSize:12,fontFamily:"'JetBrains Mono',monospace",resize:"vertical",outline:"none"}
+        }),
+        h("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+          h("button",{
+            style:{background:"transparent",border:"1px solid #ffffff20",color:"#94a3b8",borderRadius:8,padding:"8px 16px",fontSize:12,cursor:"pointer"},
+            onClick:()=>{setShowImport(false);setImportText("");}
+          },"Cancel"),
+          h("button",{
+            style:{background:S.accent,border:"none",color:"#fff",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer"},
+            onClick:()=>{
+              try{
+                historyRef.current.past.push(JSON.stringify({bmap,roots}));
+                historyRef.current.future=[];
+                const cleaned=importText.replace(/^\/\/.*$/mg,'').trim();
+                const obj=JSON.parse(cleaned);
+                const canvasEl=document.querySelector('.canvas-area');
+                const cx=canvasEl?Math.round((canvasEl.clientWidth/2-pan.x)/zoom-150):200;
+                const cy=canvasEl?Math.round((canvasEl.clientHeight/2-pan.y)/zoom-100):200;
+                dispatch({t:"IMPORT_JSON",json:obj,x:cx,y:cy});
+                setShowImport(false);
+                setImportText("");
+              }catch(e){alert("Invalid JSON: "+e.message);}
+            }
+          },"Import")
+        )
+      )
+    ),
+
+    // ── MAIN AREA ────────────────────────────────────────────
+    h("div",{style:{display:"flex",flex:1,overflow:"hidden",minHeight:0,position:"relative",flexDirection:"row"}},
+
+      // ── CATEGORY SIDEBAR (always visible) ──
+      tab==="editor"&&h("div",{style:S.palettePos==="bottom"
+        ? {position:"absolute",bottom:0,left:0,right:0,height:56,background:S.panelBg,borderTop:"1px solid #ffffff08",display:"flex",flexDirection:"row",alignItems:"center",paddingLeft:8,paddingRight:8,gap:4,zIndex:150,overflowX:"auto"}
+        : {width:72,background:S.panelBg,borderRight:S.palettePos==="right"?"none":"1px solid #ffffff08",borderLeft:S.palettePos==="right"?"1px solid #ffffff08":"none",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:12,gap:4,flexShrink:0,zIndex:150,order:S.palettePos==="right"?3:1}
+      },
+        // search box
+        h("div",{style:S.palettePos==="bottom"?{marginRight:4,position:"relative"}:{width:52,marginBottom:8,position:"relative"}},
+          h("input",{
+            placeholder:"🔍",value:search,
+            onChange:e=>{setSearch(e.target.value);if(e.target.value)setActiveCat("search");else setActiveCat(null);},
+            onFocus:()=>search&&setActiveCat("search"),
+            style:{width:S.palettePos==="bottom"?40:52,background:"#1e1e38",border:"1px solid #ffffff15",borderRadius:8,padding:"5px 6px",fontSize:10,color:"#fff",textAlign:"center",fontFamily:"'Segoe UI',sans-serif"}
+          })
+        ),
+        catGroups.map(({id,col,label})=>h("div",{
+          key:id,
+          className:`cat-icon${activeCat===id?" active":""}`,
+          style:{color:col.light,borderRightColor:activeCat===id?col.bg:"transparent"},
+          onClick:()=>setActiveCat(activeCat===id?null:id)
+        },
+          h("div",{className:"cat-dot",style:{background:activeCat===id?col.bg:col.bg+"44",color:col.light}},col.icon),
+          h("span",{className:"cat-label"},label)
+        )),
+        S.palettePos!=="bottom"&&h("div",{style:{flex:1}}),
+        // trash zone
+        S.palettePos!=="bottom"&&h("div",{
+          onDragOver:e=>{e.preventDefault();setTrashHover(true);},
+          onDragLeave:()=>setTrashHover(false),
+          onDrop:e=>{
+            e.preventDefault();setTrashHover(false);
+            const bid=e.dataTransfer.getData("blockId");
+            const isRoot=e.dataTransfer.getData("isRoot")==="1";
+            if(!bid)return;
+            const numId=parseInt(bid);
+            if(isRoot)dispatch({t:"REM_ROOT",id:numId});
+            else dispatch({t:"REM_CHILD",id:numId});
+          },
+          style:{width:52,height:52,borderRadius:12,background:trashHover?"#7f1d1d":"#1e1e38",border:`2px dashed ${trashHover?"#ef4444":"#ffffff15"}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"default",transition:"all 0.15s",marginBottom:12,gap:2}
+        },
+          h("span",{style:{fontSize:18}},trashHover?"💥":"🗑"),
+          h("span",{style:{fontSize:8,color:trashHover?"#ef4444":"#3a3a5a",letterSpacing:"0.05em",fontFamily:"'Segoe UI',sans-serif"}},"DELETE")
+        )
+      ),
+
+      // ── FLYOUT PANEL ──
+      tab==="editor"&&(activeCat||search)&&h("div",{className:"flyout",style:
+        S.palettePos==="right"
+          ? {width:S.paletteWidth,order:2,borderLeft:"1px solid #ffffff10",boxShadow:"-4px 0 16px rgba(0,0,0,0.4)",overflowY:"auto"}
+          : {width:S.paletteWidth,order:2,borderRight:"1px solid #ffffff10",boxShadow:"4px 0 16px rgba(0,0,0,0.4)",overflowY:"auto"}
+      },
+        search&&h("div",{style:{fontSize:10,color:"#6a6a9a",marginBottom:8,fontFamily:"'Segoe UI',sans-serif"}},`Results for "${search}"`),
+        flyoutSections.map(sec=>h("div",{key:sec.label},
+          !search&&h("div",{style:{fontSize:10,fontWeight:700,color:"#6a6a9a",letterSpacing:"0.08em",margin:"10px 0 6px",fontFamily:"'Segoe UI',sans-serif"}},sec.label),
+          sec.keys.map(k=>h(PalBlock,{key:k,bname:k}))
+        ))
+      ),
+
+      // ── CANVAS ──
+      tab==="editor"&&h("div",{
+        ref:canvasRef,
+        onClick:()=>{setActiveCat(null);setCollab(c=>({...c,showPanel:false}));},
+        onMouseDown:e=>{
+          if(e.button===1){
+            e.preventDefault();
+            panRef.current.active=true;
+            panRef.current.startX=e.clientX;
+            panRef.current.startY=e.clientY;
+            panRef.current.tx=pan.x;
+            panRef.current.ty=pan.y;
+            canvasRef.current.style.cursor='grabbing';
+          }
+        },
+
+        onContextMenu:e=>{if(e.button===1)e.preventDefault();},
+        onWheel:e=>{
+          e.preventDefault();
+          const rect=canvasRef.current.getBoundingClientRect();
+          const mouseX=e.clientX-rect.left;
+          const mouseY=e.clientY-rect.top;
+          setZoom(z=>{
+            const newZ=Math.min(MAX_ZOOM,Math.max(MIN_ZOOM,parseFloat((z+(e.deltaY<0?ZOOM_STEP:-ZOOM_STEP)).toFixed(2))));
+            // Adjust pan so the point under cursor stays fixed
+            // point in canvas space: (mouseX - pan.x) / z
+            // after zoom: newPan + point * newZ = mouseX
+            // newPan = mouseX - point * newZ = mouseX - (mouseX - pan.x) / z * newZ
+            setPan(p=>({
+              x: mouseX - (mouseX - p.x) * newZ / z,
+              y: mouseY - (mouseY - p.y) * newZ / z,
+            }));
+            return newZ;
+          });
+        },
+
+        onDragOver:e=>e.preventDefault(),
+        onDrop:onCanvasDrop,
+        onMouseMove:onCanvasMouseMove,
+        onMouseUp:onCanvasMouseUp,
+        onMouseLeave:e=>{
+          if(panRef.current.active){panRef.current.active=false;if(canvasRef.current)canvasRef.current.style.cursor='';}
+          onCanvasMouseUp(e);
+        },
+        className:"canvas-area",
+        style:{flex:1,position:"relative",overflow:"hidden",
+          touchAction:"none",
+          order:S.palettePos==="right"?1:3,
+          paddingBottom:S.palettePos==="bottom"?56:0,
+          background:S.canvasBg,
+          backgroundImage:`radial-gradient(rgba(255,255,255,0.07) 1.5px,transparent 1.5px)`,
+          backgroundSize:`28px 28px`,
+          backgroundPosition:`${pan.x%28}px ${pan.y%28}px`}
+      },
+        roots.length===0&&!activeCat&&h("div",{style:{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",pointerEvents:"none",color:"#2a2a4e",zIndex:0}},
+          h("div",{style:{fontSize:42,marginBottom:8}},"🧩"),
+          h("div",{style:{fontSize:14,fontWeight:600,fontFamily:"'Segoe UI',sans-serif"}},
+            "Origins Builder — drag to canvas • connect slots • Delete: remove hovered • Ctrl+C: copy • Ctrl+V: paste"),
+          h("div",{style:{fontSize:11,marginTop:4,fontFamily:"'Segoe UI',sans-serif",color:"#1e1e3a"}},"drag root blocks to reposition · drag to 🗑 to delete")
+        ),
+        h("div",{style:{position:"absolute",top:0,left:0,width:"10000px",height:"10000px",transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,transformOrigin:"0 0",overflow:"visible"}},
+          (()=>{
+            const peerDragColors={};
+            Object.values(remoteDrags).forEach(d=>{if(d.id)peerDragColors[d.id]=d.color;});
+            return roots.map(id=>{
+              const b=bmap[id]; if(!b)return null;
+              return h(ScratchBlock,{key:id,id,bmap,isChild:false,depth:0,dispatch,hoveredId,selectedId,setHoveredId,setSelectedId,mouseOverSlot,peerDragColor:peerDragColors[id]||null});
+            });
+          })(),
+          // Remote cursors
+          Object.entries(remoteCursors).map(([cid,cur])=>
+            h("div",{key:"cur-"+cid,style:{position:"absolute",left:cur.x,top:cur.y,pointerEvents:"none",zIndex:9999,transform:"translate(-2px,-2px)"}},
+              h("div",{style:{width:12,height:12,borderRadius:"50%",background:cur.color,
+                boxShadow:`0 0 8px ${cur.color}`,border:"2px solid #fff"}}),
+              h("div",{style:{position:"absolute",left:14,top:-2,background:cur.color,color:"#fff",
+                fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap",
+                fontFamily:"'Segoe UI',sans-serif"}},cur.nickname)
+            )
+          ),
+        ), // end block layer
+      ), // end canvas
+
+      // ── JSON PANEL ──
+      tab==="json"&&h("div",{style:{flex:1,overflowY:"auto",padding:24,background:"#0f0e1a"}},
+        files.length===0
+          ?h("div",{style:{color:"#2a2a4e",fontSize:13,fontFamily:"'Segoe UI',sans-serif"}},"// switch to editor and add some blocks first")
+          :files.map((f,i)=>h("div",{key:i,style:{marginBottom:32}},
+              h("div",{style:{fontSize:11,color:S.accent,marginBottom:8,letterSpacing:"0.06em",borderBottom:"1px solid #ffffff08",paddingBottom:6,fontFamily:"'Segoe UI',sans-serif",fontWeight:600}},"📄 "+f.name),
+              h("pre",{style:{margin:0,fontSize:12,lineHeight:1.9,color:"#cdd6f4",background:"#0d0c1a",borderRadius:10,padding:"14px 18px",border:"1px solid #ffffff08",overflowX:"auto",fontFamily:"'Courier New',monospace"}},
+                JSON.stringify(f.json,null,2))
+          ))
+      )
+    ),
+
+    // ── STATUS BAR ──
+    h("div",{style:{height:28,background:"#0f0e1a",borderTop:"1px solid #ffffff08",display:"flex",alignItems:"center",padding:"0 16px",gap:16,flexShrink:0}},
+      Object.entries(C).filter(([k])=>!k.includes('_meta')&&!['condition','action','power'].includes(k)).map(([k,c])=>{
+        const label={meta:"Meta",bientity:"Bi-Entity",block:"Block",item:"Item",damage:"Damage",entity:"Entity",power_general:"General",power_action:"Power Action",power_modify:"Modify",power_prevent:"Prevent"}[k]||k;
+        return h("span",{key:k,style:{fontSize:9,color:c.light,display:"flex",alignItems:"center",gap:4,fontFamily:"'Segoe UI',sans-serif"}},
+          h("span",{style:{width:8,height:8,borderRadius:2,background:c.bg,display:"inline-block",border:`1px solid ${c.border}`}}),label);
+      }),
+      h("div",{style:{flex:1}}),
+      h("span",{style:{fontSize:10,color:"#2a2a4e",fontFamily:"'Segoe UI',sans-serif"}},
+        `${roots.length} root · ${Object.keys(bmap).length} blocks · ${files.length} output file${files.length!==1?"s":""}`)
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>

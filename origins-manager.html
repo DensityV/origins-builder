@@ -1,0 +1,3318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Origins File Manager</title>
+<!-- BUILD: 2026-05-11-LAN-v3 -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700;800&display=swap');
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    --bg:#0a0a16;
+    --panel:#0f0f20;
+    --surface:#161628;
+    --surface2:#1e1e36;
+    --border:#ffffff0d;
+    --border2:#ffffff18;
+    --accent:#7c5ce7;
+    --accent2:#00d2d3;
+    --accent3:#fd79a8;
+    --text:#f0f0f8;
+    --muted:#7878a8;
+    --danger:#ff6b6b;
+    --success:#00d2a0;
+    --warning:#ffd32a;
+    --font:'Sora',sans-serif;
+    --mono:'JetBrains Mono',monospace;
+  }
+
+  body{
+    font-family:var(--font);
+    background:var(--bg);
+    color:var(--text);
+    height:100vh;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* Ambient background + dot grid texture */
+  body::before{
+    content:'';
+    position:fixed;
+    inset:0;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 0%, rgba(124,92,231,0.1) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(0,210,211,0.07) 0%, transparent 60%);
+    pointer-events:none;
+    z-index:0;
+  }
+  body::after{
+    content:'';
+    position:fixed;
+    inset:0;
+    background-image:radial-gradient(rgba(255,255,255,0.07) 1.5px,transparent 1.5px);
+    background-size:28px 28px;
+    pointer-events:none;
+    z-index:0;
+  }
+
+  /* ── Header ── */
+  header{
+    position:relative;z-index:10;
+    background:var(--panel);
+    border-bottom:1px solid var(--border2);
+    padding:0 24px;
+    height:56px;
+    display:flex;
+    align-items:center;
+    gap:20px;
+    flex-shrink:0;
+    backdrop-filter:blur(20px);
+  }
+  header::after{
+    content:'';
+    position:absolute;
+    bottom:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,var(--accent)66,transparent);
+  }
+  .logo{
+    font-family:var(--mono);
+    font-weight:700;
+    font-size:13px;
+    letter-spacing:0.12em;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+  .logo span{color:var(--accent2);}
+  header h1{
+    font-size:13px;
+    font-weight:400;
+    color:var(--muted);
+    letter-spacing:0.03em;
+  }
+  .header-actions{margin-left:auto;display:flex;gap:8px;}
+
+  /* ── Buttons ── */
+  .btn{
+    font-family:var(--font);
+    font-size:11px;
+    font-weight:600;
+    padding:7px 16px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+    transition:all 0.15s;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    letter-spacing:0.02em;
+  }
+  .btn-primary{
+    background:linear-gradient(135deg,var(--accent),#6c4fd4);
+    color:#fff;
+    box-shadow:0 4px 15px rgba(124,92,231,0.3);
+  }
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(124,92,231,0.4);}
+  .btn-secondary{
+    background:var(--surface2);
+    color:var(--text);
+    border:1px solid var(--border2);
+  }
+  .btn-secondary:hover{border-color:var(--accent)66;color:var(--accent);}
+  .btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger)33;}
+  .btn-danger:hover{background:var(--danger)15;border-color:var(--danger)66;}
+  .btn-success{background:linear-gradient(135deg,var(--success),#00b894);color:#fff;}
+  .btn-success:hover{transform:translateY(-1px);}
+  .btn-sm{padding:4px 10px;font-size:10px;border-radius:6px;}
+  .btn-xs{padding:3px 8px;font-size:10px;border-radius:5px;}
+
+  /* ── Layout ── */
+  .main{display:flex;flex:1;overflow:hidden;position:relative;z-index:1;}
+
+  /* ── Sidebar ── */
+  .sidebar{
+    width:260px;
+    background:var(--panel);
+    border-right:1px solid var(--border2);
+    display:flex;
+    flex-direction:column;
+    flex-shrink:0;
+    overflow:hidden;
+    position:relative;
+    z-index:1;
+  }
+  .sidebar-header{
+    padding:16px;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .sidebar-title{
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .ns-list{padding:8px;flex:1;overflow-y:auto;}
+  .ns-item{
+    padding:10px 12px;
+    border-radius:10px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-size:13px;
+    font-weight:500;
+    transition:all 0.12s;
+    margin-bottom:2px;
+    border:1px solid transparent;
+  }
+  .ns-item:hover{background:var(--surface2);border-color:var(--border2);}
+  .ns-item.active{
+    background:linear-gradient(135deg,var(--accent)15,var(--accent)08);
+    border-color:var(--accent)44;
+    color:var(--text);
+  }
+  .ns-dot{
+    width:8px;height:8px;
+    border-radius:50%;
+    flex-shrink:0;
+    box-shadow:0 0 6px currentColor;
+  }
+  .ns-count{
+    margin-left:auto;
+    font-size:10px;
+    font-family:var(--mono);
+    color:var(--text);
+    background:var(--surface2);
+    border:1px solid var(--border2);
+    padding:2px 7px;
+    border-radius:5px;
+    font-weight:600;
+  }
+  .sidebar-empty{
+    padding:24px 16px;
+    text-align:center;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.6;
+  }
+  .sidebar-empty-icon{font-size:28px;margin-bottom:8px;opacity:0.7;}
+
+  /* ── Content ── */
+  .content{
+    flex:1;
+    overflow-y:auto;
+    padding:28px;
+    background:transparent;
+  }
+  .content-empty{
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    height:100%;gap:16px;color:var(--muted);
+  }
+  .content-empty-icon{font-size:56px;opacity:0.5;}
+  .content-empty p{font-size:14px;font-weight:500;}
+  .content-empty small{font-size:12px;opacity:0.7;}
+
+  /* ── Namespace header ── */
+  .ns-header{
+    display:flex;align-items:center;gap:12px;
+    margin-bottom:24px;
+    padding-bottom:20px;
+    border-bottom:1px solid var(--border);
+  }
+  .ns-header h2{font-size:22px;font-weight:700;letter-spacing:-0.02em;}
+  .ns-badge{
+    font-family:var(--mono);
+    font-size:11px;
+    background:var(--accent)18;
+    color:var(--accent);
+    padding:4px 10px;
+    border-radius:6px;
+    border:1px solid var(--accent)33;
+    letter-spacing:0.05em;
+  }
+
+  /* ── Tabs ── */
+  .tabs{
+    display:flex;gap:2px;
+    background:var(--panel);
+    border-radius:12px;
+    padding:4px;
+    margin-bottom:24px;
+    width:fit-content;
+    border:1px solid var(--border2);
+  }
+  .tab{
+    padding:7px 18px;
+    border-radius:9px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    transition:all 0.15s;
+    color:var(--muted);
+    letter-spacing:0.02em;
+  }
+  .tab.active{
+    background:var(--surface2);
+    color:var(--text);
+    box-shadow:0 2px 8px rgba(0,0,0,0.3);
+  }
+  .tab:hover:not(.active){color:var(--text);}
+
+  /* ── Origin cards ── */
+  .origins-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+    gap:14px;
+  }
+  .origin-card{
+    background:linear-gradient(135deg,var(--panel),var(--surface));
+    border:1px solid var(--border2);
+    border-radius:14px;
+    padding:18px;
+    transition:all 0.2s;
+    cursor:pointer;
+    position:relative;
+    overflow:hidden;
+    box-shadow:0 4px 20px rgba(0,0,0,0.2);
+  }
+  .origin-card::before{
+    content:'';
+    position:absolute;
+    inset:0;
+    background:linear-gradient(135deg,var(--accent)05,transparent);
+    opacity:0;
+    transition:opacity 0.2s;
+  }
+  .origin-card:hover{border-color:var(--accent)44;transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.3);}
+  .origin-card:hover::before{opacity:1;}
+  .origin-card-header{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;}
+  .origin-icon{
+    font-size:22px;
+    width:44px;height:44px;
+    background:var(--surface2);
+    border:1px solid var(--border2);
+    border-radius:12px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .origin-name{font-size:14px;font-weight:700;margin-bottom:3px;letter-spacing:-0.01em;}
+  .origin-desc{font-size:11px;color:var(--muted);line-height:1.5;}
+  .origin-powers{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;}
+  .power-tag{
+    font-size:10px;
+    font-family:var(--mono);
+    background:var(--surface2);
+    border:1px solid var(--border2);
+    border-radius:4px;
+    padding:2px 6px;
+    color:var(--muted);
+  }
+  .origin-card-actions{
+    display:flex;gap:6px;
+    padding-top:12px;
+    border-top:1px solid var(--border);
+  }
+
+  /* ── Powers list ── */
+  .powers-list{display:flex;flex-direction:column;gap:8px;}
+  .power-row{
+    background:linear-gradient(135deg,var(--panel),var(--surface));
+    border:1px solid var(--border2);
+    border-radius:12px;
+    padding:14px 16px;
+    display:flex;align-items:center;gap:12px;
+    transition:all 0.15s;
+    cursor:pointer;
+    box-shadow:0 2px 12px rgba(0,0,0,0.15);
+  }
+  .power-row:hover{border-color:var(--accent)44;background:var(--surface);}
+  .power-row.selected{border-color:var(--accent);background:var(--accent)0d;}
+  .power-status{
+    width:8px;height:8px;
+    border-radius:50%;flex-shrink:0;
+  }
+  .power-status.saved{background:var(--success);box-shadow:0 0 6px var(--success)88;}
+  .power-status.unsaved{background:var(--warning);box-shadow:0 0 6px var(--warning)66;}
+  .power-name{font-size:13px;font-weight:600;flex:1;letter-spacing:-0.01em;}
+  .power-id{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px;}
+  .power-type-badge{
+    font-size:9px;
+    font-family:var(--mono);
+    background:var(--surface2);
+    border:1px solid var(--border2);
+    border-radius:4px;
+    padding:3px 7px;
+    color:var(--muted);
+    flex-shrink:0;
+    letter-spacing:0.03em;
+  }
+  .power-actions{display:flex;gap:5px;flex-shrink:0;}
+
+  /* ── Add card ── */
+  .add-card{
+    background:transparent;
+    border:1.5px dashed var(--border2);
+    border-radius:14px;
+    padding:28px;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:8px;cursor:pointer;
+    transition:all 0.2s;
+    color:var(--muted);
+  }
+  .add-card:hover{
+    border-color:var(--accent)66;
+    color:var(--accent);
+    background:var(--accent)06;
+  }
+  .add-card-icon{font-size:22px;}
+  .add-card-label{font-size:12px;font-weight:600;letter-spacing:0.02em;}
+
+  /* ── Layer rows ── */
+  .layer-row{
+    background:var(--panel);
+    border:1px solid var(--border2);
+    border-radius:12px;
+    padding:14px 16px;
+    display:flex;align-items:center;gap:12px;
+    transition:all 0.15s;cursor:pointer;
+  }
+  .layer-row:hover{border-color:var(--accent2)44;background:var(--surface);}
+  .layer-dot{
+    width:10px;height:10px;
+    border-radius:3px;
+    background:linear-gradient(135deg,var(--accent2),var(--accent));
+    flex-shrink:0;
+  }
+
+  /* ── Modal ── */
+  .modal-backdrop{
+    position:fixed;inset:0;
+    background:rgba(0,0,0,0.75);
+    backdrop-filter:blur(6px);
+    z-index:1000;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .modal{
+    background:var(--panel);
+    border:1px solid var(--border2);
+    border-radius:18px;
+    padding:28px;
+    width:460px;
+    max-width:90vw;
+    box-shadow:0 24px 64px rgba(0,0,0,0.5);
+  }
+  .modal h3{
+    font-size:16px;
+    font-weight:700;
+    margin-bottom:20px;
+    letter-spacing:-0.02em;
+  }
+  .form-group{margin-bottom:16px;}
+  .form-group label{
+    font-size:10px;
+    font-weight:700;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    display:block;
+    margin-bottom:7px;
+  }
+  .form-group input,
+  .form-group textarea,
+  .form-group select{
+    width:100%;
+    background:var(--surface2);
+    border:1.5px solid var(--border2);
+    border-radius:10px;
+    padding:9px 13px;
+    font-size:13px;
+    color:var(--text);
+    font-family:var(--font);
+    outline:none;
+    transition:border-color 0.15s;
+  }
+  .form-group input:focus,
+  .form-group textarea:focus,
+  .form-group select:focus{border-color:var(--accent);}
+  .form-group textarea{resize:vertical;min-height:72px;}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:24px;}
+
+  /* ── Editor overlay ── */
+  .editor-overlay{position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;flex-direction:column;}
+  .editor-toolbar{
+    background:var(--panel);
+    border-bottom:1px solid var(--border2);
+    padding:10px 20px;
+    display:flex;align-items:center;gap:14px;
+    flex-shrink:0;
+  }
+  .editor-toolbar .power-info{flex:1;}
+  .editor-toolbar .power-info strong{font-size:13px;font-weight:700;}
+  .editor-toolbar .power-info span{
+    font-size:10px;
+    color:var(--muted);
+    margin-left:10px;
+    font-family:var(--mono);
+  }
+  .editor-iframe{flex:1;border:none;width:100%;}
+
+  /* ── Power selector ── */
+  .power-selector{
+    display:flex;flex-direction:column;gap:5px;
+    max-height:200px;overflow-y:auto;
+    background:var(--surface2);
+    border-radius:10px;
+    padding:8px;
+    border:1.5px solid var(--border2);
+  }
+  .power-select-item{
+    display:flex;align-items:center;gap:10px;
+    padding:7px 10px;
+    border-radius:8px;
+    cursor:pointer;transition:background 0.1s;
+  }
+  .power-select-item:hover{background:var(--surface);}
+  .power-select-item input[type=checkbox]{accent-color:var(--accent);}
+
+  /* ── Section heading ── */
+  .section-bar{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:16px;
+  }
+  .section-bar h3{
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+
+  /* ── Scrollbars ── */
+  ::-webkit-scrollbar{width:4px;height:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--muted);}
+
+  .hidden{display:none!important;}
+</style>
+
+</head>
+<body>
+
+<header>
+  <div class="logo">ORIGINS <span>MANAGER</span></div>
+  <h1>File Structure Builder</h1>
+  <div class="header-actions">
+    <button class="btn btn-secondary" onclick="exportZip()">⬇ Export ZIP</button>
+    <button class="btn btn-secondary" id="account-btn" onclick="toggleAccountPanel()" style="position:relative">
+      <span id="account-btn-label">👤 Account</span>
+    </button>
+    <button class="btn btn-secondary" id="share-btn" onclick="toggleCollabPanel()" style="position:relative">
+      <span id="share-btn-label">Share</span>
+      <span id="share-indicator" style="display:none;width:8px;height:8px;background:#10b981;border-radius:50%;margin-left:4px;box-shadow:0 0 6px #10b981"></span>
+    </button>
+    <button class="btn btn-secondary" onclick="openOverlay('guide')">? Guide</button>
+    <button class="btn btn-secondary" onclick="openOverlay('settings')">⚙ Settings</button>
+    <button class="btn btn-primary" onclick="showNewNsModal()">+ Namespace</button>
+  </div>
+</header>
+
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Namespaces</span>
+      <span class="ns-count" id="ns-count">0</span>
+    </div>
+    <div class="ns-list" id="ns-list"></div>
+    <div id="ns-empty" class="sidebar-empty"><div class="sidebar-empty-icon">📦</div>No namespaces yet.<br>Create one to get started.</div>
+  </div>
+
+  <!-- Content -->
+  <div class="content" id="content">
+    <div class="content-empty">
+      <div class="content-empty-icon">📁</div>
+      <p>Select a namespace</p>
+      <small>or create one using the button above</small>
+    </div>
+  </div>
+</div>
+
+<!-- Editor overlay -->
+<!-- Guide Overlay -->
+<div class="editor-overlay hidden" id="guide-overlay">
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border-bottom:1px solid rgba(255,255,255,0.08);">
+    <button onclick="document.getElementById('guide-overlay').classList.add('hidden')" 
+      style="background:none;border:none;color:#aaa;cursor:pointer;font-size:13px;font-weight:600;font-family:'Sora',sans-serif">✕ Close Guide</button>
+  </div>
+  <iframe class="editor-iframe" id="guide-iframe" src=""></iframe>
+</div>
+
+<!-- Settings Overlay -->
+<div class="editor-overlay hidden" id="settings-overlay">
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border-bottom:1px solid rgba(255,255,255,0.08);">
+    <button onclick="document.getElementById('settings-overlay').classList.add('hidden')" 
+      style="background:none;border:none;color:#aaa;cursor:pointer;font-size:13px;font-weight:600;font-family:'Sora',sans-serif">✕ Close Settings</button>
+  </div>
+  <iframe class="editor-iframe" id="settings-iframe" src=""></iframe>
+</div>
+
+<div class="editor-overlay hidden" id="editor-overlay">
+  <div class="editor-toolbar">
+    <div class="power-info">
+      <strong id="editor-power-name">Power</strong>
+      <span id="editor-power-id"></span>
+    </div>
+    <button class="btn btn-success" onclick="savePowerFromEditor()">💾 Save Power</button>
+    <button class="btn btn-secondary" onclick="closeEditor()">✕ Close Editor</button>
+  </div>
+  <iframe class="editor-iframe" id="editor-iframe" src="origins-editor.html"></iframe>
+</div>
+
+<!-- Chat Panel -->
+<div id="chat-panel" style="display:none;position:fixed;bottom:80px;right:20px;width:300px;height:380px;
+  background:#0f0f20;border:1px solid rgba(255,255,255,0.1);border-radius:16px;
+  z-index:1000;box-shadow:0 16px 48px rgba(0,0,0,0.6);flex-direction:column;
+  font-family:'Sora',sans-serif;overflow:hidden;">
+  <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:13px;font-weight:700;color:#fff">Chat</div>
+    <button onclick="toggleChat()" style="background:none;border:none;color:#666;cursor:pointer;font-size:16px;line-height:1">✕</button>
+  </div>
+  <div id="chat-messages" style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:4px;"></div>
+  <div style="padding:10px;border-top:1px solid rgba(255,255,255,0.08);display:flex;gap:8px;">
+    <input id="chat-input" placeholder="Message..." maxlength="500"
+      style="flex:1;background:#0a0a16;border:1px solid rgba(124,92,231,0.3);border-radius:8px;
+      padding:8px 12px;font-size:12px;color:#fff;outline:none;font-family:'Sora',sans-serif"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){sendChat(this.value);this.value='';event.preventDefault();}"/>
+    <button onclick="const i=document.getElementById('chat-input');sendChat(i.value);i.value='';"
+      style="background:var(--accent);border:none;color:#fff;border-radius:8px;padding:8px 12px;
+      font-size:12px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif">Send</button>
+  </div>
+</div>
+
+<!-- Chat Button -->
+<div id="chat-btn" style="display:none;position:fixed;bottom:20px;right:20px;z-index:999;">
+  <button onclick="toggleChat()" style="width:48px;height:48px;border-radius:50%;background:var(--accent);
+    border:none;color:#fff;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(124,92,231,0.4);
+    position:relative;display:flex;align-items:center;justify-content:center;">
+    💬
+    <span id="chat-badge" style="display:none;position:absolute;top:-4px;right:-4px;
+      background:#ef4444;color:#fff;border-radius:50%;width:18px;height:18px;
+      font-size:10px;font-weight:700;align-items:center;justify-content:center;
+      font-family:'Sora',sans-serif;">0</span>
+  </button>
+</div>
+
+<!-- Account Panel -->
+<div id="account-panel" style="display:none;position:fixed;top:64px;right:20px;width:320px;
+  background:#0f0f20;border:1px solid rgba(255,255,255,0.1);border-radius:16px;
+  z-index:900;box-shadow:0 16px 48px rgba(0,0,0,0.6);padding:20px;
+  font-family:'Sora',sans-serif;max-height:80vh;overflow-y:auto;">
+  <div id="account-panel-content"></div>
+</div>
+
+<!-- Collab Panel -->
+<div id="collab-panel" style="display:none;position:fixed;top:64px;right:20px;width:310px;
+  background:#0f0f20;border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:20px;
+  z-index:900;box-shadow:0 16px 48px rgba(0,0,0,0.6);font-family:'Sora',sans-serif;color:#f0f0f8;">
+</div>
+
+<!-- Modals -->
+<div class="modal-backdrop hidden" id="modal-backdrop">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+// ── Load shared settings ─────────────────────────────────────────────────
+const MS = (() => {
+  try { return JSON.parse(localStorage.getItem('origins-editor-settings') || '{}'); } catch(e) { return {}; }
+})();
+const MUI = {
+  bg:      MS.managerBg      || '#0a0a16',
+  panel:   MS.managerPanel   || '#0f0f20',
+  accent:  MS.managerAccent  || '#7c5ce7',
+  accent2: MS.managerAccent2 || '#00d2d3',
+  font:    MS.font           || "'Sora',sans-serif",
+};
+
+let localState = JSON.parse(JSON.stringify(JSON.parse(localStorage.getItem('origins-manager') || '{"namespaces":[]}')));
+let sessionState = null; // host's state when connected as joiner
+// state always points to whichever is active
+let state = localState;
+let activeNs = null;
+let activeTab = 'origins';
+let editingPower = null; // {nsId, powerId}
+
+function sendPeerIdToEditor() {
+  const peerId = collab.lanMode ? collab.lanClientId : collab.peer?.id;
+  if(peerId) {
+    const iframe = document.getElementById('editor-iframe');
+    if(iframe && iframe.contentWindow) {
+      try { iframe.contentWindow.postMessage({ type: 'SET_PEER_ID', peerId }, '*'); } catch(e) {}
+    }
+  }
+}
+
+function save() {
+  // Always save LOCAL state — deep clone to ensure no session references bleed in
+  localStorage.setItem('origins-manager', JSON.stringify(JSON.parse(JSON.stringify(localState))));
+}
+
+function getNs(id) { return state.namespaces.find(n => n.id === id); }
+
+function genId(name) {
+  return name.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '') || 'item_' + Date.now();
+}
+
+// ── Render sidebar ────────────────────────────────────────────────────────
+function renderSidebar() {
+  const list = document.getElementById('ns-list');
+  const empty = document.getElementById('ns-empty');
+  document.getElementById('ns-count').textContent = state.namespaces.length;
+  if (state.namespaces.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = state.namespaces.map(ns => `
+    <div class="ns-item${activeNs === ns.id ? ' active' : ''}" onclick="selectNs('${ns.id}')">
+      <div class="ns-dot" style="background:${ns.color||'#7c5ce7'}"></div>
+      <span>${ns.name}</span>
+      <span style="margin-left:auto;font-size:10px;color:var(--muted)">${(ns.powers||[]).length}p</span>
+    </div>
+  `).join('');
+}
+
+// ── Select namespace ──────────────────────────────────────────────────────
+function selectNs(id) {
+  activeNs = id;
+  activeTab = 'origins';
+  renderSidebar();
+  renderContent();
+}
+
+// ── Render content ────────────────────────────────────────────────────────
+function renderContent() {
+  const ns = getNs(activeNs);
+  const content = document.getElementById('content');
+  if (!ns) {
+    content.innerHTML = `<div class="content-empty"><div class="content-empty-icon">📁</div><p>Select a namespace</p><small>or create one using the button above</small></div>`;
+    return;
+  }
+
+  const originsTab = activeTab === 'origins';
+  const powersTab = activeTab === 'powers';
+
+  const originsHtml = originsTab ? renderOriginsTab(ns) : '';
+  const powersHtml = powersTab ? renderPowersTab(ns) : '';
+
+  content.innerHTML = `
+    <div class="ns-header">
+      <h2>${ns.name}</h2>
+      <div class="ns-badge">${ns.id}</div>
+      <button class="btn btn-danger btn-sm" onclick="deleteNs('${ns.id}')">Delete</button>
+    </div>
+    <div class="tabs">
+      <div class="tab${originsTab?' active':''}" onclick="setTab('origins')">Origins (${(ns.origins||[]).length})</div>
+      <div class="tab${powersTab?' active':''}" onclick="setTab('powers')">Powers (${(ns.powers||[]).length})</div>
+      <div class="tab${activeTab==='layers'?' active':''}" onclick="setTab('layers')">Layers (${(ns.layers||[]).length})</div>
+    </div>
+    ${originsHtml}
+    ${powersHtml}
+    ${activeTab==='layers'?renderLayersTab(ns):''}
+  `;
+}
+
+function setTab(tab) {
+  activeTab = tab;
+  renderContent();
+}
+
+function renderLayersTab(ns) {
+  const layers = ns.layers || [];
+  const rows = layers.map(l => `
+    <div class="layer-row" data-item-id="layer-${ns.id}-${l.id}" onclick="selectItem('layer','${ns.id}','${l.id}')">
+      <div>
+        <div class="power-name">${l.name}</div>
+        <div class="power-id">data/origins/origin_layers/${l.id}.json &nbsp;·&nbsp; order: ${l.order ?? 1} &nbsp;·&nbsp; replace: ${l.replace ? 'true' : 'false'}</div>
+      </div>
+      <div class="power-actions">
+        <button class="btn btn-secondary btn-sm" onclick="editLayer('${ns.id}','${l.id}')">✏ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteLayer('${ns.id}','${l.id}')">✕</button>
+      </div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="powers-list">
+      ${rows}
+      <button class="btn btn-secondary" style="width:100%;justify-content:center" onclick="showNewLayerModal('${ns.id}')">+ New Layer</button>
+    </div>
+  `;
+}
+
+function renderOriginsTab(ns) {
+  const origins = ns.origins || [];
+  const cards = origins.map(o => {
+    const powerTags = (o.powers || []).map(pid => {
+      const p = (ns.powers || []).find(p => p.id === pid);
+      return p ? `<span class="power-tag">${p.id}</span>` : '';
+    }).join('');
+    return `
+      <div class="origin-card" data-item-id="origin-${ns.id}-${o.id}" onclick="selectItem('origin','${ns.id}','${o.id}')">
+        <div class="origin-card-header">
+          <div class="origin-icon">${o.icon || '⭐'}</div>
+          <div>
+            <div class="origin-name">${o.name}</div>
+            <div class="origin-desc">${o.description || 'No description'}</div>
+          </div>
+        </div>
+        ${powerTags ? `<div class="origin-powers">${powerTags}</div>` : ''}
+        <div class="origin-card-actions">
+          <button class="btn btn-secondary btn-sm" onclick="renameOrigin('${ns.id}','${o.id}')">✎</button>
+          <button class="btn btn-secondary btn-sm" onclick="editOrigin('${ns.id}','${o.id}')">✏ Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteOrigin('${ns.id}','${o.id}')">✕</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="origins-grid">
+      ${cards}
+      <div class="add-card" onclick="showNewOriginModal('${ns.id}')">
+        <div class="add-card-icon">+</div>
+        <div class="add-card-label">New Origin</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPowersTab(ns) {
+  const powers = ns.powers || [];
+  const rows = powers.map(p => `
+    <div class="power-row" data-item-id="power-${ns.id}-${p.id}" onclick="selectItem('power','${ns.id}','${p.id}')" style="cursor:pointer">
+      <div class="power-status ${p.json ? 'saved' : 'unsaved'}" title="${p.json ? 'Has saved JSON' : 'No JSON yet'}"></div>
+      <div>
+        <div class="power-name">${p.name}</div>
+        <div class="power-id">${ns.id}:${p.subfolder?p.subfolder+'/':''}${p.id}</div>
+      </div>
+      ${p.type ? `<div class="power-type-badge">${p.type}</div>` : ''}
+      <div class="power-actions">
+        <button class="btn btn-secondary btn-sm" onclick="renamePower('${ns.id}','${p.id}')">✎</button>
+        <button class="btn btn-secondary btn-sm" onclick="openEditor('${ns.id}','${p.id}')">✏ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deletePower('${ns.id}','${p.id}')">✕</button>
+      </div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="powers-list">
+      ${rows}
+      <button class="btn btn-secondary" style="width:100%;justify-content:center" onclick="showNewPowerModal('${ns.id}')">+ New Power</button>
+    </div>
+  `;
+}
+
+// ── Modals ────────────────────────────────────────────────────────────────
+function showModal(html) {
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-backdrop').classList.remove('hidden');
+}
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.add('hidden');
+}
+document.getElementById('modal-backdrop').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-backdrop')) closeModal();
+});
+
+function showNewNsModal() {
+  showModal(`
+    <h3>New Namespace</h3>
+    <div class="form-group">
+      <label>Namespace ID</label>
+      <input id="ns-id-input" placeholder="e.g. chaos" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')">
+    </div>
+    <div class="form-group">
+      <label>Display Name</label>
+      <input id="ns-name-input" placeholder="e.g. Chaos Origins">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createNs()">Create</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('ns-id-input').focus(), 50);
+}
+
+function createNs() {
+  const id = document.getElementById('ns-id-input').value.trim();
+  const name = document.getElementById('ns-name-input').value.trim();
+  if (!id || !name) return;
+  if (state.namespaces.find(n => n.id === id)) { alert('Namespace ID already exists'); return; }
+  state.namespaces.push({ id, name, origins: [], powers: [], layers: [], color: '#7c5ce7' });
+  saveAndSync();
+  closeModal();
+  selectNs(id);
+}
+
+function showNewOriginModal(nsId) {
+  const ns = getNs(nsId);
+  const powers = (ns.powers || []).map(p => `
+    <div class="power-select-item">
+      <input type="checkbox" id="op-${p.id}" value="${p.id}">
+      <label for="op-${p.id}" style="cursor:pointer;flex:1">
+        <div style="font-size:12px;font-weight:600">${p.name}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:monospace">${nsId}:${p.id}</div>
+      </label>
+    </div>
+  `).join('');
+
+  showModal(`
+    <h3>New Origin</h3>
+    <div class="form-group">
+      <label>Name</label>
+      <input id="o-name" placeholder="e.g. Angel">
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="o-desc" placeholder="Origin description..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>Icon (emoji, for display)</label>
+      <input id="o-icon" placeholder="⭐" style="width:80px">
+    </div>
+    <div class="form-group">
+      <label>Icon Item (Minecraft item ID)</label>
+      <input id="o-icon-item" placeholder="minecraft:paper">
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1">
+        <label>Impact (0-3)</label>
+        <select id="o-impact">
+          <option value="0">0 — None</option>
+          <option value="1">1 — Low</option>
+          <option value="2">2 — Medium</option>
+          <option value="3">3 — High</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>Order (optional)</label>
+        <input id="o-order" placeholder="e.g. 1" type="number">
+      </div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="o-unchoosable"> Unchoosable
+      </label>
+    </div>
+    <div class="form-group">
+      <label>Assign Powers</label>
+      <div class="power-selector">${powers || '<div style="color:var(--muted);font-size:12px;padding:8px">No powers yet — create powers first</div>'}</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createOrigin('${nsId}')">Create</button>
+    </div>
+  `);
+}
+
+function createOrigin(nsId) {
+  if(!collab.isHost && collab.active && !collab.settings.allowCreate) { alert("The host has not enabled this action."); return; }
+  const name = document.getElementById('o-name').value.trim();
+  const desc = document.getElementById('o-desc').value.trim();
+  const icon = document.getElementById('o-icon').value.trim() || '⭐';
+  const iconItem = document.getElementById('o-icon-item')?.value.trim() || 'minecraft:paper';
+  const impact = parseInt(document.getElementById('o-impact')?.value || '0');
+  const order = document.getElementById('o-order')?.value.trim();
+  const unchoosable = document.getElementById('o-unchoosable')?.checked || false;
+  if (!name) return;
+  const powers = [...document.querySelectorAll('.power-select-item input:checked')].map(c => c.value);
+  const ns = getNs(nsId);
+  const id = genId(name);
+  ns.origins = ns.origins || [];
+  ns.origins.push({ id, name, description: desc, icon, iconItem, impact, order: order||undefined, unchoosable, powers });
+  saveAndSync();
+  closeModal();
+  renderContent();
+}
+
+function editOrigin(nsId, originId) {
+  const ns = getNs(nsId);
+  const o = ns.origins.find(o => o.id === originId);
+  if (!o) return;
+
+  const powers = (ns.powers || []).map(p => `
+    <div class="power-select-item">
+      <input type="checkbox" id="op-${p.id}" value="${p.id}" ${(o.powers||[]).includes(p.id)?'checked':''}>
+      <label for="op-${p.id}" style="cursor:pointer;flex:1">
+        <div style="font-size:12px;font-weight:600">${p.name}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:monospace">${nsId}:${p.id}</div>
+      </label>
+    </div>
+  `).join('');
+
+  showModal(`
+    <h3>Edit Origin: ${o.name}</h3>
+    <div class="form-group">
+      <label>Name</label>
+      <input id="o-name" value="${o.name}">
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea id="o-desc">${o.description||''}</textarea>
+    </div>
+    <div class="form-group">
+      <label>Icon (emoji)</label>
+      <input id="o-icon" value="${o.icon||'⭐'}" style="width:80px">
+    </div>
+    <div class="form-group">
+      <label>Icon Item</label>
+      <input id="o-icon-item" value="${o.iconItem||'minecraft:paper'}">
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1">
+        <label>Impact (0-3)</label>
+        <select id="o-impact">
+          <option value="0"${(o.impact||0)===0?' selected':''}>0 — None</option>
+          <option value="1"${(o.impact||0)===1?' selected':''}>1 — Low</option>
+          <option value="2"${(o.impact||0)===2?' selected':''}>2 — Medium</option>
+          <option value="3"${(o.impact||0)===3?' selected':''}>3 — High</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>Order</label>
+        <input id="o-order" value="${o.order||''}" type="number" placeholder="optional">
+      </div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="o-unchoosable" ${o.unchoosable?'checked':''}> Unchoosable
+      </label>
+    </div>
+    <div class="form-group">
+      <label>Powers</label>
+      <div class="power-selector">${powers||'<div style="color:var(--muted);font-size:12px;padding:8px">No powers available</div>'}</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveOriginEdit('${nsId}','${originId}')">Save</button>
+    </div>
+  `);
+}
+
+function saveOriginEdit(nsId, originId) {
+  const ns = getNs(nsId);
+  const o = ns.origins.find(o => o.id === originId);
+  o.name = document.getElementById('o-name').value.trim() || o.name;
+  o.description = document.getElementById('o-desc').value.trim();
+  o.icon = document.getElementById('o-icon').value.trim() || '⭐';
+  o.iconItem = document.getElementById('o-icon-item')?.value.trim() || 'minecraft:paper';
+  o.impact = parseInt(document.getElementById('o-impact')?.value || '0');
+  const ord = document.getElementById('o-order')?.value.trim();
+  o.order = ord ? parseInt(ord) : undefined;
+  o.unchoosable = document.getElementById('o-unchoosable')?.checked || false;
+  o.powers = [...document.querySelectorAll('.power-select-item input:checked')].map(c => c.value);
+  saveAndSync();
+  closeModal();
+  renderContent();
+}
+
+function showNewLayerModal(nsId) {
+  const ns = getNs(nsId);
+  const origins = (ns.origins || []).map(o => `
+    <div class="power-select-item">
+      <input type="checkbox" id="lo-${o.id}" value="${nsId}:${o.id}" checked>
+      <label for="lo-${o.id}" style="cursor:pointer;flex:1">
+        <div style="font-size:12px;font-weight:600">${o.name}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:monospace">${nsId}:${o.id}</div>
+      </label>
+    </div>
+  `).join('');
+
+  showModal(`
+    <h3>New Origin Layer</h3>
+    <div class="form-group">
+      <label>Layer File Name (e.g. origin)</label>
+      <input id="l-id" placeholder="origin" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')">
+    </div>
+    <div class="form-group">
+      <label>Display Name</label>
+      <input id="l-name" placeholder="e.g. Origin">
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1">
+        <label>Order</label>
+        <input id="l-order" type="number" value="1" min="0">
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>Replace existing</label>
+        <select id="l-replace">
+          <option value="false">false (add to)</option>
+          <option value="true">true (replace)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Origins to include</label>
+      <div class="power-selector">${origins || '<div style="color:var(--muted);font-size:12px;padding:8px">No origins yet</div>'}</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createLayer('${nsId}')">Create</button>
+    </div>
+  `);
+}
+
+function createLayer(nsId) {
+  const id = document.getElementById('l-id').value.trim() || 'origin';
+  const name = document.getElementById('l-name').value.trim() || id;
+  const order = parseInt(document.getElementById('l-order').value || '1');
+  const replace = document.getElementById('l-replace').value === 'true';
+  const origins = [...document.querySelectorAll('.power-select-item input:checked')].map(c => c.value);
+  const ns = getNs(nsId);
+  ns.layers = ns.layers || [];
+  if (ns.layers.find(l => l.id === id)) { alert('Layer ID already exists'); return; }
+  ns.layers.push({ id, name, order, replace, origins });
+  saveAndSync();
+  closeModal();
+  renderContent();
+}
+
+function editLayer(nsId, layerId) {
+  const ns = getNs(nsId);
+  const l = (ns.layers || []).find(l => l.id === layerId);
+  if (!l) return;
+
+  const origins = (ns.origins || []).map(o => `
+    <div class="power-select-item">
+      <input type="checkbox" id="lo-${o.id}" value="${nsId}:${o.id}" ${(l.origins||[]).includes(nsId+':'+o.id)?'checked':''}>
+      <label for="lo-${o.id}" style="cursor:pointer;flex:1">
+        <div style="font-size:12px;font-weight:600">${o.name}</div>
+        <div style="font-size:10px;color:var(--muted);font-family:monospace">${nsId}:${o.id}</div>
+      </label>
+    </div>
+  `).join('');
+
+  showModal(`
+    <h3>Edit Layer: ${l.name}</h3>
+    <div class="form-group">
+      <label>Display Name</label>
+      <input id="l-name" value="${l.name}">
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1">
+        <label>Order</label>
+        <input id="l-order" type="number" value="${l.order ?? 1}" min="0">
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>Replace existing</label>
+        <select id="l-replace">
+          <option value="false" ${!l.replace?'selected':''}>false (add to)</option>
+          <option value="true" ${l.replace?'selected':''}>true (replace)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Origins</label>
+      <div class="power-selector">${origins || '<div style="color:var(--muted);font-size:12px;padding:8px">No origins yet</div>'}</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveLayerEdit('${nsId}','${layerId}')">Save</button>
+    </div>
+  `);
+}
+
+function saveLayerEdit(nsId, layerId) {
+  const ns = getNs(nsId);
+  const l = (ns.layers || []).find(l => l.id === layerId);
+  l.name = document.getElementById('l-name').value.trim() || l.name;
+  l.order = parseInt(document.getElementById('l-order').value || '1');
+  l.replace = document.getElementById('l-replace').value === 'true';
+  l.origins = [...document.querySelectorAll('.power-select-item input:checked')].map(c => c.value);
+  saveAndSync();
+  closeModal();
+  renderContent();
+}
+
+function deleteLayer(nsId, layerId) {
+  const ns = getNs(nsId);
+  ns.layers = (ns.layers || []).filter(l => l.id !== layerId);
+  saveAndSync();
+  renderContent();
+}
+
+function renamePower(nsId, powerId) {
+  const ns = getNs(nsId);
+  const power = (ns.powers || []).find(p => p.id === powerId);
+  if (!power) return;
+  const newName = prompt('Rename power:', power.name);
+  if (!newName || !newName.trim()) return;
+  power.name = newName.trim();
+  saveAndSync();
+  renderContent();
+}
+
+function renameOrigin(nsId, originId) {
+  const ns = getNs(nsId);
+  const o = (ns.origins || []).find(o => o.id === originId);
+  if (!o) return;
+  const newName = prompt('Rename origin:', o.name);
+  if (!newName || !newName.trim()) return;
+  o.name = newName.trim();
+  saveAndSync();
+  renderContent();
+}
+
+function deleteOrigin(nsId, originId) {
+  if(!collab.isHost && collab.active && !collab.settings.allowDelete) { alert("The host has not enabled this action."); return; }
+  const ns = getNs(nsId);
+  ns.origins = ns.origins.filter(o => o.id !== originId);
+  saveAndSync();
+  renderContent();
+}
+
+function showNewPowerModal(nsId) {
+  showModal(`
+    <h3>New Power</h3>
+    <div class="form-group">
+      <label>Power Name</label>
+      <input id="p-name" placeholder="e.g. Elytra Flight">
+    </div>
+    <div class="form-group">
+      <label>Power ID (auto-generated)</label>
+      <input id="p-id" placeholder="elytra_flight" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')">
+    </div>
+    <div class="form-group">
+      <label>Subfolder (optional, e.g. stormpiercer)</label>
+      <input id="p-subfolder" placeholder="leave blank for no subfolder" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_\/]/g,'')">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createPower('${nsId}')">Create & Edit</button>
+    </div>
+  `);
+  document.getElementById('p-name').addEventListener('input', function() {
+    const idField = document.getElementById('p-id');
+    if (!idField._touched) idField.value = genId(this.value);
+  });
+  document.getElementById('p-id').addEventListener('input', function() { this._touched = true; });
+}
+
+function createPower(nsId) {
+  if(!collab.isHost && collab.active && !collab.settings.allowCreate) { alert("The host has not enabled this action."); return; }
+  const name = document.getElementById('p-name').value.trim();
+  let id = document.getElementById('p-id').value.trim() || genId(name);
+  if (!name) return;
+  const ns = getNs(nsId);
+  ns.powers = ns.powers || [];
+  if (ns.powers.find(p => p.id === id)) { alert('Power ID already exists'); return; }
+  const subfolder = document.getElementById('p-subfolder')?.value.trim().replace(/^\/|\/$/, '') || '';
+  ns.powers.push({ id, name, subfolder, json: null, type: null });
+  saveAndSync();
+  closeModal();
+  renderContent();
+  // Open editor immediately
+  setTimeout(() => openEditor(nsId, id), 100);
+}
+
+function deletePower(nsId, powerId) {
+  if(!collab.isHost && collab.active && !collab.settings.allowDelete) { alert("The host has not enabled this action."); return; }
+  const ns = getNs(nsId);
+  ns.powers = ns.powers.filter(p => p.id !== powerId);
+  ns.origins?.forEach(o => { o.powers = (o.powers||[]).filter(pid => pid !== powerId); });
+  saveAndSync();
+  renderContent();
+}
+
+function deleteNs(nsId) {
+  state.namespaces = state.namespaces.filter(n => n.id !== nsId);
+  saveAndSync();
+  if (activeNs === nsId) {
+    activeNs = null;
+    document.getElementById('content').innerHTML = `<div class="content-empty"><div class="icon">📁</div><p>Select or create a namespace to get started</p></div>`;
+  }
+  renderSidebar();
+}
+
+// ── Editor ────────────────────────────────────────────────────────────────
+function openEditor(nsId, powerId) {
+  if(!collab.isHost && collab.active && !collab.settings.allowEdit) {
+    alert('The host has not enabled editing powers.');
+    return;
+  }
+  const ns = getNs(nsId);
+  const power = (ns.powers || []).find(p => p.id === powerId);
+  if (!power) return;
+
+  editingPower = { nsId, powerId };
+  document.getElementById('editor-power-name').textContent = power.name;
+  document.getElementById('editor-power-id').textContent = `${nsId}:${powerId}`;
+
+  const iframe = document.getElementById('editor-iframe');
+  const overlay = document.getElementById('editor-overlay');
+
+  if (overlay.classList.contains('hidden')) {
+    // First open — iframe needs to load
+    overlay.classList.remove('hidden');
+    iframe.onload = () => {
+      try {
+        // Tell editor its peer ID so it can filter its own echoes
+        if(collab.peer) {
+          sendPeerIdToEditor();
+        }
+        if(collab.active && !collab.isHost) {
+          iframe.contentWindow.postMessage({ type: 'LOAD_POWER', json: power.state || null, powerId: powerId }, '*');
+          sendToHost({ type: 'REQUEST_CANVAS', nsId, powerId });
+        } else {
+          iframe.contentWindow.postMessage({ type: 'LOAD_POWER', json: power.state || null, powerId: powerId }, '*');
+        }
+      } catch(e) {}
+    };
+    if (!iframe.src || iframe.src === 'about:blank') {
+      iframe.src = 'origins-editor.html';
+    } else {
+      // Already loaded — post directly
+      setTimeout(() => {
+        sendPeerIdToEditor();
+        try {
+          iframe.contentWindow.postMessage({ type: 'LOAD_POWER', json: power.state || null, powerId: powerId }, '*');
+        } catch(e) {}
+      }, 100);
+    }
+  } else {
+    // Already open — just send LOAD_POWER
+    overlay.classList.remove('hidden');
+    setTimeout(() => {
+      sendPeerIdToEditor();
+      try {
+        iframe.contentWindow.postMessage({ type: 'LOAD_POWER', json: power.state || null, powerId: powerId }, '*');
+      } catch(e) {}
+    }, 50);
+  }
+}
+
+function openOverlay(type) {
+  const overlay = document.getElementById(type + '-overlay');
+  const iframe = document.getElementById(type + '-iframe');
+  if(!overlay || !iframe) return;
+  // Load src only once
+  if(!iframe.src || iframe.src === 'about:blank' || iframe.src === window.location.href) {
+    iframe.src = 'origins-' + type + '.html';
+  }
+  overlay.classList.remove('hidden');
+}
+
+function closeEditor() {
+  document.getElementById('editor-overlay').classList.add('hidden');
+  if(editingPower && collab.active) {
+    // Snapshot current canvas state into power.state before closing
+    // so peers who open it later get the latest version
+    const iframe = document.getElementById('editor-iframe');
+    if(iframe && iframe.contentWindow) {
+      collab._closingPower = { nsId: editingPower.nsId, powerId: editingPower.powerId };
+      try { iframe.contentWindow.postMessage({ type: 'REQUEST_CANVAS_STATE' }, '*'); } catch(e) {}
+    }
+  }
+  editingPower = null;
+}
+
+function savePowerFromEditor() {
+  if (!editingPower) return;
+  const iframe = document.getElementById('editor-iframe');
+  // Request JSON from editor
+  iframe.contentWindow.postMessage({ type: 'REQUEST_JSON' }, '*');
+}
+
+// Listen for messages from editor
+window.addEventListener('message', e => {
+  // Bridge block actions from editor iframe to collab peers
+
+  if(e.data?.type === 'EDITOR_DRAG_MOVE' && collab.active) {
+    const myId = collab.lanMode ? collab.lanClientId : (collab.peer?.id || 'host');
+    const myColor = collab.myColor || collab.peers.find(p=>p.connId===myId)?.color || '#7c5ce7';
+    const msg = { type: 'PEER_DRAG_MOVE', id: e.data.id, x: e.data.x, y: e.data.y,
+      powerId: e.data.powerId, peerId: myId, color: myColor };
+    if(collab.lanMode) {
+      if(collab.isHost) lanBroadcast(msg);
+      else lanSend(msg, null, 'host');
+    } else if(collab.isHost) {
+      collabBroadcast(msg);
+    } else {
+      sendToHost(msg);
+    }
+  }
+  if(e.data?.type === 'EDITOR_DRAG_END' && collab.active) {
+    const myId = collab.lanMode ? collab.lanClientId : (collab.peer?.id || 'host');
+    const msg = { type: 'PEER_DRAG_END', id: e.data.id, x: e.data.x, y: e.data.y,
+      powerId: e.data.powerId, peerId: myId };
+    if(collab.lanMode) {
+      if(collab.isHost) lanBroadcast(msg);
+      else lanSend(msg, null, 'host');
+    } else if(collab.isHost) {
+      collabBroadcast(msg);
+    } else {
+      sendToHost(msg);
+    }
+  }
+  if(e.data?.type === 'EDITOR_ACTION') {
+    if(collab.active) {
+      const myId = collab.lanMode ? collab.lanClientId : (collab.peer?.id || 'host');
+      const msg = { type: 'PEER_EDITOR_ACTION', action: e.data.action, powerId: e.data.powerId, senderId: myId };
+      if(collab.fbMode) {
+        const msgStr = JSON.stringify(msg);
+        if(collab.isHost) {
+          collab.peers.forEach(p => { if(p.dc && p.dc.readyState === 'open') try { p.dc.send(msgStr); } catch(e) {} });
+        } else {
+          const dc = collab._fbDc;
+          if(dc && dc.readyState === 'open') try { dc.send(msgStr); } catch(e) {}
+        }
+      } else if(collab.lanMode) {
+        if(collab.isHost) lanBroadcast(msg);
+        else lanSend(msg, null, 'host');
+      } else if(collab.isHost) {
+        collabBroadcast(msg);
+      } else {
+        sendToHost(msg);
+      }
+    }
+  }
+
+  if(e.data?.type === 'CANVAS_STATE_RESPONSE') {
+    // Handle close-editor snapshot save
+    if(collab._closingPower) {
+      const cp = collab._closingPower;
+      collab._closingPower = null;
+      const ns = getNs(cp.nsId);
+      const power = ns?.powers?.find(p => p.id === cp.powerId);
+      if(power) {
+        power.state = e.data.state || null;
+        saveAndSync(); // broadcast updated state to peers
+      }
+    }
+    if(editingPower) {
+      collabBroadcast({ type: 'CANVAS_STATE', nsId: editingPower.nsId, powerId: editingPower.powerId, state: e.data.state });
+    }
+  }
+  if(e.data?.type === 'REQUEST_CANVAS_STATE' && collab.active && editingPower) {
+    // Editor is asking manager to get its current state and broadcast to peers
+    const iframe = document.getElementById('editor-iframe');
+    if(iframe && iframe.contentWindow) {
+      collab._broadcastOnResponse = true;
+      collab._broadcastPowerId = e.data.powerId;
+      iframe.contentWindow.postMessage({ type: 'REQUEST_CANVAS_STATE', powerId: e.data.powerId }, '*');
+    }
+  }
+  if(e.data?.type === 'CANVAS_STATE_RESPONSE' && collab._broadcastOnResponse && editingPower) {
+    collab._broadcastOnResponse = false;
+    const msg = { type: 'CANVAS_STATE', nsId: editingPower.nsId, powerId: collab._broadcastPowerId, state: e.data.state };
+    collabBroadcast(msg);
+  }
+  if(e.data?.type === 'CANVAS_STATE_RESPONSE' && collab._lanCanvasRequestDc) {
+    const dc = collab._lanCanvasRequestDc;
+    const msg = { type: 'CANVAS_STATE', nsId: collab._lanCanvasRequestNsId, powerId: collab._lanCanvasRequestPowerId, state: e.data.state };
+    collab._lanCanvasRequestDc = null;
+    if(dc && dc.readyState === 'open') dc.send(JSON.stringify(msg));
+  }
+  if(e.data?.type === 'OPEN_CHAT') {
+    if(!chatOpen) toggleChat();
+  }
+  if(e.data?.type === 'CLOSE_OVERLAY') {
+    const overlay = document.getElementById(e.data.overlay + '-overlay');
+    if(overlay) overlay.classList.add('hidden');
+  }
+  if (e.data?.type === 'POWER_JSON' && editingPower) {
+    const ns = getNs(editingPower.nsId);
+    const power = (ns.powers || []).find(p => p.id === editingPower.powerId);
+    if (power) {
+      power.json = e.data.json;
+      power.state = e.data.state || null;
+      power.type = e.data.powerType || null;
+      saveAndSync();
+      renderContent();
+      closeEditor();
+    }
+  }
+});
+
+// ── Export ZIP ────────────────────────────────────────────────────────────
+async function exportZip() {
+  const ns = getNs(activeNs);
+  if (!ns) { alert('Select a namespace first'); return; }
+
+  const files = {};
+
+  // pack.mcmeta — required for datapack to be recognized by Minecraft
+  // pack_format 15 = 1.20.1
+  files['pack.mcmeta'] = JSON.stringify({
+    pack: {
+      pack_format: 15,
+      description: `${ns.name} Origins`
+    }
+  }, null, 2);
+
+  // Power files
+  (ns.powers || []).forEach(p => {
+    if (p.json) {
+      const json = typeof p.json === 'string' ? p.json : JSON.stringify(p.json, null, 2);
+      const powerPath = p.subfolder ? `${p.subfolder}/${p.id}` : p.id;
+      files[`data/${ns.id}/powers/${powerPath}.json`] = json;
+    }
+  });
+
+  // Origin layer file — required for origins to appear in selection screen
+
+  // Origin files
+  (ns.origins || []).forEach(o => {
+    const originJson = {
+      powers: (o.powers || []).map(pid => {
+        const p = (ns.powers || []).find(p => p.id === pid);
+        const powerPath = p?.subfolder ? `${p.subfolder}/${pid}` : pid;
+        return `${ns.id}:${powerPath}`;
+      }),
+      icon: o.iconItem || 'minecraft:paper',
+      impact: o.impact ?? 0,
+      name: o.name,
+      description: o.description || '',
+    };
+    if (o.order !== undefined && o.order !== '') originJson.order = parseInt(o.order);
+    if (o.unchoosable) originJson.unchoosable = true;
+    files[`data/${ns.id}/origins/${o.id}.json`] = JSON.stringify(originJson, null, 2);
+  });
+
+  // Origin layer files — one per defined layer
+  (ns.layers || []).forEach(l => {
+    const layerJson = { replace: l.replace || false, order: l.order ?? 1, origins: l.origins || [] };
+    files[`data/origins/origin_layers/${l.id}.json`] = JSON.stringify(layerJson, null, 2);
+  });
+
+  // Check we have more than just pack.mcmeta
+  const dataFiles = Object.keys(files).filter(k => k !== 'pack.mcmeta');
+  if (dataFiles.length === 0) {
+    alert('No powers or origins to export yet. Create some content first.');
+    return;
+  }
+
+  // Build and download zip
+  async function buildZip() {
+    const zip = new JSZip();
+    Object.entries(files).forEach(([path, content]) => zip.file(path, content));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${ns.id}-origins.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  if (window.JSZip) {
+    buildZip();
+  } else {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    script.onload = buildZip;
+    script.onerror = () => alert('Failed to load JSZip. Check your internet connection.');
+    document.head.appendChild(script);
+  }
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────
+let selectedItem = null; // {type:'power'|'origin', nsId, id}
+
+function selectItem(type, nsId, id) {
+  selectedItem = {type, nsId, id};
+  // highlight selected row
+  document.querySelectorAll('.power-row,.origin-card').forEach(el => el.style.outline='');
+  const el = document.querySelector(`[data-item-id="${type}-${nsId}-${id}"]`);
+  if(el) el.style.outline = '2px solid var(--accent)';
+}
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'Delete' && selectedItem && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    if(selectedItem.type === 'power') deletePower(selectedItem.nsId, selectedItem.id);
+    else if(selectedItem.type === 'origin') deleteOrigin(selectedItem.nsId, selectedItem.id);
+    else if(selectedItem.type === 'layer') deleteLayer(selectedItem.nsId, selectedItem.id);
+    selectedItem = null;
+  }
+});
+
+// ── Collaboration state ──────────────────────────────────────────────────
+const collab = {
+  active: false,
+  isHost: false,
+  roomCode: '',
+  nickname: '',
+  peer: null,
+  conns: [],
+  peers: [],
+  settings: {
+    allowCreate: false,
+    allowDelete: false,
+    allowEdit: true,
+  },
+  showPanel: false,
+  shareNsIds: [],
+  lanMode: false,
+  lanClientId: null,
+  lanEventSource: null,
+  lanBaseUrl: null,
+  myColor: null,
+  fbMode: false,
+  _fbPc: null,
+  _fbDc: null,
+  myNickname: '',
+};
+let chatMessages = []; // {nickname, text, timestamp, color}
+let chatUnread = 0;
+let chatOpen = false;
+
+const PEER_COLORS = ['#7c5ce7','#00d2d3','#fd79a8','#fdcb6e','#00b894','#e17055','#74b9ff','#a29bfe'];
+let colorIndex = 0;
+
+function pickUniqueColor() {
+  // Get colors already in use
+  const used = new Set([
+    collab.myColor,
+    ...collab.peers.map(p => p.color)
+  ].filter(Boolean));
+  // Shuffle PEER_COLORS and pick first unused one
+  const available = PEER_COLORS.filter(c => !used.has(c));
+  if(available.length > 0) {
+    // Pick randomly from available
+    return available[Math.floor(Math.random() * available.length)];
+  }
+  // All colors taken — generate a random hex color
+  return '#' + Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0');
+}
+
+function collabSyncState() {
+  collabBroadcast({ type: 'STATE_SYNC', state: getSharedState() });
+}
+
+function getSharedState() {
+  // Only share the selected namespaces
+  const shared = localState.namespaces.filter(n => collab.shareNsIds.includes(n.id));
+  return JSON.parse(JSON.stringify({ namespaces: shared }));
+}
+
+function applyRemoteState(remoteState, shouldSave) {
+  if(collab.isHost) {
+    // Host: update local state and save
+    localState.namespaces = JSON.parse(JSON.stringify(remoteState.namespaces));
+    state = localState;
+    if(shouldSave) save();
+  } else {
+    // Joiner: deep clone into session state, never touch localState
+    sessionState = { namespaces: JSON.parse(JSON.stringify(remoteState.namespaces)) };
+    state = sessionState;
+  }
+  // Validate activeNs still exists
+  if(activeNs && !state.namespaces.find(n => n.id === activeNs)) {
+    activeNs = state.namespaces.length > 0 ? state.namespaces[0].id : null;
+  }
+  renderSidebar();
+  if(activeNs) renderContent();
+}
+// ── WebRTC Manual Signaling (no server needed) ───────────────────────────
+const rtc = {
+  pc: null,          // RTCPeerConnection
+  dc: null,          // RTCDataChannel (host side)
+  dcs: [],           // all data channels (host keeps one per peer)
+  pendingCandidates: [],
+};
+
+// ── Compress/decompress offer/answer strings ──────────────────────────────
+async function compress(str) {
+  const stream = new CompressionStream('deflate-raw');
+  const writer = stream.writable.getWriter();
+  writer.write(new TextEncoder().encode(str));
+  writer.close();
+  const chunks = [];
+  const reader = stream.readable.getReader();
+  while(true) {
+    const {done, value} = await reader.read();
+    if(done) break;
+    chunks.push(value);
+  }
+  const compressed = new Uint8Array(chunks.reduce((a,b)=>a+b.length,0));
+  let offset=0;
+  chunks.forEach(c=>{compressed.set(c,offset);offset+=c.length;});
+  return btoa(String.fromCharCode(...compressed))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+
+async function decompress(str) {
+  const b64 = str.replace(/-/g,'+').replace(/_/g,'/');
+  const padding = (4 - b64.length % 4) % 4;
+  const binary = atob(b64 + '='.repeat(padding));
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+  const stream = new DecompressionStream('deflate-raw');
+  const writer = stream.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  const chunks = [];
+  const reader = stream.readable.getReader();
+  while(true) {
+    const {done, value} = await reader.read();
+    if(done) break;
+    chunks.push(value);
+  }
+  const all = new Uint8Array(chunks.reduce((a,b)=>a+b.length,0));
+  let offset=0;
+  chunks.forEach(c=>{all.set(c,offset);offset+=c.length;});
+  return new TextDecoder().decode(all);
+}
+
+// ── SDP strip/reconstruct ─────────────────────────────────────────────────
+function stripSDP(sdpObj) {
+  // Extract only the essential fields from SDP
+  const sdp = sdpObj.sdp || '';
+  const lines = sdp.split('\r\n');
+  const get = (prefix) => {
+    const l = lines.find(l => l.startsWith(prefix));
+    return l ? l.slice(prefix.length) : '';
+  };
+  const getAll = (prefix) => lines.filter(l => l.startsWith(prefix)).map(l => l.slice(prefix.length));
+
+  return {
+    t: sdpObj.type,
+    f: get('a=fingerprint:sha-256 '),
+    u: get('a=ice-ufrag:'),
+    p: get('a=ice-pwd:'),
+    s: get('a=setup:'),
+    c: getAll('a=candidate:').slice(0, 3), // keep up to 3 candidates
+  };
+}
+
+function reconstructSDP(stripped) {
+  const isOffer = stripped.t === 'offer';
+  const candidates = (stripped.c || []).map(c => `a=candidate:${c}`).join('\r\n');
+  const sdp = [
+    'v=0',
+    'o=- 1 1 IN IP4 127.0.0.1',
+    's=-',
+    't=0 0',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel',
+    'c=IN IP4 0.0.0.0',
+    `a=ice-ufrag:${stripped.u}`,
+    `a=ice-pwd:${stripped.p}`,
+    'a=ice-options:trickle',
+    `a=fingerprint:sha-256 ${stripped.f}`,
+    `a=setup:${stripped.s}`,
+    'a=mid:0',
+    'a=sctp-port:5000',
+    'a=max-message-size:262144',
+    candidates,
+  ].filter(Boolean).join('\r\n') + '\r\n';
+  return { type: stripped.t, sdp };
+}
+
+async function encodeSignal(sdpObj) {
+  return await compress(JSON.stringify(sdpObj));
+}
+
+async function decodeSignal(str) {
+  const decompressed = await decompress(str);
+  return JSON.parse(decompressed);
+}
+
+// Cloudflare TURN credentials fetched fresh each session
+let RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+  ]
+};
+
+async function fetchTURNCredentials() {
+  try {
+    const res = await fetch(
+      'https://rtc.live.cloudflare.com/v1/turn/keys/d2fbdad6bd9a0f65aa2c5aea185b2cd5/credentials/generate',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer 5ce9ff653ebf82029e0e9ae400921a4e67cf0fa70393a726c73b51f69328d234',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ttl: 86400 }),
+      }
+    );
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    // Cloudflare returns iceServers as a single object, RTCPeerConnection needs an array
+    const iceServers = Array.isArray(data.iceServers) ? data.iceServers : [data.iceServers];
+    RTC_CONFIG = { iceServers };
+    console.log('[TURN] Cloudflare credentials fetched:', iceServers.length, 'servers');
+  } catch(e) {
+    console.warn('[TURN] Failed to fetch Cloudflare credentials, using STUN only:', e.message);
+  }
+}
+
+async function hostSessionLAN(nsIds) {
+  collab.shareNsIds = nsIds;
+  collab.isHost = true;
+  collab.lanMode = true;
+  collab.active = true;
+  collab.peers = [];
+  collab.roomCode = 'LAN';
+  collab.lanClientId = 'host-' + Math.random().toString(36).slice(2,8);
+  collab.myColor = pickUniqueColor();
+  renderCollabUI();
+
+  // Show waiting dialog
+  const dlg = document.getElementById('rtc-dialog');
+  if(dlg) dlg.remove();
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="rtc-dialog" style="position:fixed;inset:0;background:#0008;z-index:9999;display:flex;
+      align-items:center;justify-content:center;font-family:'Sora',sans-serif">
+      <div style="background:#0f0f20;border:1px solid rgba(124,92,231,0.4);border-radius:16px;
+        padding:24px;width:500px;max-height:80vh;overflow-y:auto;">
+        <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:12px">🏠 LAN Host — Waiting for joiner</div>
+        <div style="font-size:11px;color:#a0a0c0;margin-bottom:8px">1. Send this OFFER to the person joining:</div>
+        <textarea id="rtc-offer-out" readonly style="width:100%;height:100px;background:#0a0a16;border:1px solid #333;
+          border-radius:8px;color:#7c5ce7;font-size:10px;padding:8px;resize:none;font-family:monospace">Generating...</textarea>
+        <div style="font-size:11px;color:#a0a0c0;margin:12px 0 8px">2. Paste their ANSWER here:</div>
+        <textarea id="rtc-answer-in" placeholder="Paste answer from joiner..." style="width:100%;height:80px;
+          background:#0a0a16;border:1px solid #333;border-radius:8px;color:#fff;font-size:10px;
+          padding:8px;resize:none;font-family:monospace"></textarea>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button onclick="applyRTCAnswer()" style="flex:1;background:var(--accent);border:none;color:#fff;
+            border-radius:8px;padding:10px;font-size:12px;font-weight:600;cursor:pointer">✓ Connect</button>
+          <button onclick="document.getElementById('rtc-dialog').remove();endSession();" 
+            style="flex:1;background:#1e1e36;border:1px solid #444;color:#aaa;
+            border-radius:8px;padding:10px;font-size:12px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  // Create peer connection and offer
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  rtc.pc = pc;
+
+  // Host creates data channel
+  const dc = pc.createDataChannel('origins', { ordered: true });
+  rtc.dc = dc;
+  setupHostDataChannel(dc);
+
+  // Show offer after 1s max wait, don't wait for all candidates
+  let _offerShown = false;
+  const _showOffer = () => {
+    if(_offerShown) return;
+    _offerShown = true;
+    encodeSignal(pc.localDescription).then(encoded => {
+      const ta = document.getElementById('rtc-offer-out');
+      if(ta) ta.value = encoded;
+    });
+  };
+  pc.onicecandidate = e => { if(!e.candidate) _showOffer(); };
+  pc.onicegatheringstatechange = () => { if(pc.iceGatheringState === 'complete') _showOffer(); };
+  setTimeout(_showOffer, 1500); // max wait 1.5s
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+}
+
+function setupHostDataChannel(dc) {
+  rtc.dcs.push(dc);
+  dc._lastPong = Date.now();
+  dc._connectedAt = null;
+  dc.onopen = () => {
+    dc._connectedAt = Date.now();
+    dc._lastPong = Date.now();
+    document.getElementById('rtc-dialog')?.remove();
+    dc.send(JSON.stringify({ type: 'STATE_SYNC', state: getSharedState(),
+      hostNickname: collab.myNickname, hostColor: collab.myColor }));
+  };
+  dc.onmessage = e => {
+    try {
+      const data = JSON.parse(e.data);
+      if(data.type === 'PONG') { dc._lastPong = Date.now(); return; }
+      if(data.type === 'PING') { try { dc.send(JSON.stringify({ type: 'PONG' })); } catch(e) {} return; }
+      if(data.type === 'HELLO') {
+        if(!rtc._dcPeerMap) rtc._dcPeerMap = new Map();
+        rtc._dcPeerMap.set(dc, data.connId);
+      }
+      handleLANMessage(data, true, dc);
+    } catch(err) {}
+  };
+  dc.onclose = () => {
+    rtc.dcs = rtc.dcs.filter(d => d !== dc);
+    const connId = rtc._dcPeerMap?.get(dc);
+    if(connId) {
+      collab.peers = collab.peers.filter(p => p.connId !== connId);
+      rtc._dcPeerMap?.delete(dc);
+    }
+    renderCollabUI();
+  };
+}
+
+async function applyRTCAnswer() {
+  const ta = document.getElementById('rtc-answer-in');
+  if(!ta || !ta.value.trim()) { alert('Paste the answer first'); return; }
+  try {
+    const answer = await decodeSignal(ta.value.trim());
+    await rtc.pc.setRemoteDescription(answer);
+    document.getElementById('rtc-dialog')?.remove();
+  } catch(e) {
+    alert('Invalid answer: ' + e.message);
+  }
+}
+
+async function joinSessionLAN(address, nickname) {
+  // address not used for WebRTC — just needs nickname
+  collab.isHost = false;
+  collab.lanMode = true;
+  collab.nickname = nickname;
+  collab.myNickname = nickname;
+  collab.lanClientId = 'joiner-' + Math.random().toString(36).slice(2,8);
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="rtc-dialog" style="position:fixed;inset:0;background:#0008;z-index:9999;display:flex;
+      align-items:center;justify-content:center;font-family:'Sora',sans-serif">
+      <div style="background:#0f0f20;border:1px solid rgba(124,92,231,0.4);border-radius:16px;
+        padding:24px;width:500px;max-height:80vh;overflow-y:auto;">
+        <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:12px">🔗 LAN Join</div>
+        <div style="font-size:11px;color:#a0a0c0;margin-bottom:8px">1. Paste the OFFER from the host:</div>
+        <textarea id="rtc-offer-in" placeholder="Paste offer from host..." style="width:100%;height:100px;
+          background:#0a0a16;border:1px solid #333;border-radius:8px;color:#fff;font-size:10px;
+          padding:8px;resize:none;font-family:monospace"></textarea>
+        <div style="font-size:11px;color:#a0a0c0;margin:12px 0 8px">2. Send this ANSWER back to the host:</div>
+        <textarea id="rtc-answer-out" readonly placeholder="Answer will appear here..." style="width:100%;height:80px;
+          background:#0a0a16;border:1px solid #333;border-radius:8px;color:#7c5ce7;font-size:10px;
+          padding:8px;resize:none;font-family:monospace"></textarea>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button onclick="generateRTCAnswer('${nickname}')" style="flex:1;background:var(--accent);border:none;color:#fff;
+            border-radius:8px;padding:10px;font-size:12px;font-weight:600;cursor:pointer">Generate Answer</button>
+          <button onclick="document.getElementById('rtc-dialog').remove();" 
+            style="flex:1;background:#1e1e36;border:1px solid #444;color:#aaa;
+            border-radius:8px;padding:10px;font-size:12px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function generateRTCAnswer(nickname) {
+  const ta = document.getElementById('rtc-offer-in');
+  if(!ta || !ta.value.trim()) { alert('Paste the offer first'); return; }
+
+  try {
+    const offer = await decodeSignal(ta.value.trim());
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+    rtc.pc = pc;
+
+    pc.oniceconnectionstatechange = () => {
+      const s = pc.iceConnectionState;
+      if((s === 'failed' || s === 'closed') && collab.active) {
+        collab.active = false;
+        sessionState = null;
+        state = localState;
+        activeNs = localState.namespaces.length > 0 ? localState.namespaces[0].id : null;
+        renderSidebar(); renderContent(); renderCollabUI();
+      }
+    };
+    pc.ondatachannel = e => {
+      const dc = e.channel;
+      rtc.dc = dc;
+      dc.onopen = () => {
+        document.getElementById('rtc-dialog')?.remove();
+        collab.active = true;
+        collab.roomCode = 'LAN';
+        // Send HELLO
+        dc.send(JSON.stringify({ type: 'HELLO', nickname, connId: 'joiner-'+Math.random().toString(36).slice(2,8) }));
+        renderCollabUI();
+      };
+      dc.onmessage = e => {
+        try {
+          const data = JSON.parse(e.data);
+          if(data.type === 'PING') { try { dc.send(JSON.stringify({ type: 'PONG' })); } catch(e) {} return; }
+          if(data.type === 'PONG') return;
+          handleLANMessage(data, false, dc);
+        } catch(err) {}
+      };
+      dc.onclose = () => {
+        const pc = rtc.pc;
+        const iceState = pc?.iceConnectionState;
+        if(iceState === 'failed' || iceState === 'closed') {
+          if(collab.active) {
+            collab.active = false;
+            sessionState = null;
+            state = localState;
+            activeNs = localState.namespaces.length > 0 ? localState.namespaces[0].id : null;
+            renderSidebar(); renderContent(); renderCollabUI();
+          }
+        } else {
+          // Transient close — wait and check again
+          setTimeout(() => {
+            const s2 = rtc.pc?.iceConnectionState;
+            if((s2 === 'failed' || s2 === 'closed' || dc.readyState === 'closed') && collab.active) {
+              collab.active = false;
+              sessionState = null;
+              state = localState;
+              activeNs = localState.namespaces.length > 0 ? localState.namespaces[0].id : null;
+              renderSidebar(); renderContent(); renderCollabUI();
+            }
+          }, 3000);
+        }
+      };
+    };
+
+    let _answerShown = false;
+    const _showAnswer = () => {
+      if(_answerShown) return;
+      _answerShown = true;
+      encodeSignal(pc.localDescription).then(encoded => {
+        const out = document.getElementById('rtc-answer-out');
+        if(out) out.value = encoded;
+      });
+    };
+    pc.onicecandidate = e => { if(!e.candidate) _showAnswer(); };
+    pc.onicegatheringstatechange = () => { if(pc.iceGatheringState === 'complete') _showAnswer(); };
+    setTimeout(_showAnswer, 1500); // max wait 1.5s
+
+    await pc.setRemoteDescription(offer);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+  } catch(e) {
+    alert('Invalid offer: ' + e.message);
+  }
+}
+
+function lanSend(msg, excludeId, targetId) {
+  // In WebRTC mode, send to all data channels (host) or the single dc (joiner)
+  const data = JSON.stringify(msg);
+  if(collab.isHost) {
+    rtc.dcs.forEach(dc => { if(dc.readyState === 'open') try { dc.send(data); } catch(e) {} });
+  } else {
+    if(rtc.dc && rtc.dc.readyState === 'open') try { rtc.dc.send(data); } catch(e) {}
+  }
+}
+
+function lanBroadcast(msg) { lanSend(msg); }
+
+function collabBroadcast(msg) {
+  if(collab.fbMode) {
+    const str = JSON.stringify(msg);
+    collab.peers.forEach(p => {
+      if(p.dc && p.dc.readyState === 'open') try { p.dc.send(str); } catch(e) {}
+    });
+  } else if(collab.lanMode) {
+    lanBroadcast(msg);
+  }
+}
+
+function sendToHost(msg) {
+  // Send from joiner to host
+  const str = typeof msg === 'string' ? msg : JSON.stringify(msg);
+  if(collab.fbMode) {
+    const dc = collab._fbDc;
+    if(dc && dc.readyState === 'open') try { dc.send(str); } catch(e) {}
+  } else if(collab.lanMode) {
+    lanSend(msg, null, 'host');
+  }
+}
+
+function handleLANMessage(data, isHost, sourceDc) {
+  if(data.type === 'HELLO') {
+    const color = pickUniqueColor();
+    collab.peers.push({ nickname: data.nickname, connId: data.connId, color });
+    collab.active = true;
+    renderCollabUI();
+    sourceDc?.send(JSON.stringify({ type: 'YOUR_COLOR', color }));
+    sourceDc?.send(JSON.stringify({ type: 'STATE_SYNC', state: getSharedState(),
+      hostNickname: collab.myNickname, hostColor: collab.myColor }));
+    // Notify other peers
+    rtc.dcs.filter(d => d !== sourceDc).forEach(d => {
+      if(d.readyState === 'open') d.send(JSON.stringify({ type: 'PEER_JOIN', nickname: data.nickname, color, connId: data.connId }));
+    });
+  }
+  if(data.type === 'STATE_SYNC') {
+    applyRemoteState(data.state, false);
+    if(!isHost && data.hostNickname && !collab.peers.find(p => p.isHost)) {
+      collab.peers = collab.peers.filter(p => !p.isHost);
+      collab.peers.unshift({ nickname: data.hostNickname, color: data.hostColor || '#7c5ce7',
+        connId: 'host', isHost: true });
+      renderCollabUI();
+    }
+  }
+  if(data.type === 'STATE_PATCH') {
+    if(isHost) {
+      applyRemoteState(data.state, true);
+      rtc.dcs.filter(d => d !== sourceDc).forEach(d => {
+        if(d.readyState === 'open') d.send(JSON.stringify({ type: 'STATE_PATCH', state: getSharedState() }));
+      });
+    } else {
+      applyRemoteState(data.state, false);
+    }
+  }
+  if(data.type === 'PEER_JOIN') {
+    if(!collab.peers.find(p => p.connId === data.connId))
+      collab.peers.push({ nickname: data.nickname, connId: data.connId, color: data.color });
+    renderCollabUI();
+  }
+  if(data.type === 'CANVAS_STATE') {
+    if(editingPower && editingPower.nsId === data.nsId && editingPower.powerId === data.powerId) {
+      const iframe = document.getElementById('editor-iframe');
+      if(iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'LOAD_POWER', json: data.state, powerId: data.powerId }, '*');
+      }
+    }
+  }
+  if(data.type === 'PEER_LEAVE') {
+    collab.peers = collab.peers.filter(p => p.connId !== data.connId);
+    renderCollabUI();
+  }
+  if(data.type === 'CHAT_MSG') {
+    receiveChat(data);
+    if(isHost) {
+      rtc.dcs.filter(d => d !== sourceDc).forEach(d => {
+        if(d.readyState === 'open') d.send(JSON.stringify(data));
+      });
+    }
+  }
+  if(data.type === 'REQUEST_CANVAS') {
+    const ns = (isHost ? localState : (sessionState||localState)).namespaces.find(n => n.id === data.nsId);
+    const power = ns?.powers?.find(p => p.id === data.powerId);
+    if(power) {
+      if(editingPower && editingPower.nsId === data.nsId && editingPower.powerId === data.powerId) {
+        // Get live state from our editor
+        const iframe = document.getElementById('editor-iframe');
+        if(iframe && iframe.contentWindow) {
+          collab._lanCanvasRequestDc = sourceDc;
+          collab._lanCanvasRequestNsId = data.nsId;
+          collab._lanCanvasRequestPowerId = data.powerId;
+          iframe.contentWindow.postMessage({ type: 'REQUEST_CANVAS_STATE' }, '*');
+        }
+      } else {
+        const reply = { type: 'CANVAS_STATE', nsId: data.nsId, powerId: data.powerId, state: power.state || null };
+        sourceDc?.send(JSON.stringify(reply));
+      }
+    }
+  }
+  if(data.type === 'SETTINGS_UPDATE') {
+    Object.assign(collab.settings, data.settings);
+    renderCollabUI();
+  }
+  if(data.type === 'SESSION_ENDED') { endSession(); }
+  if(data.type === 'KICKED') { endSession(); alert('You were kicked.'); }
+  if(data.type === 'PEER_DRAG_MOVE' || data.type === 'PEER_DRAG_END') {
+    if(editingPower && data.powerId === editingPower.powerId) {
+      const iframe = document.getElementById('editor-iframe');
+      if(iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(data, '*');
+      }
+    }
+    if(isHost) {
+      rtc.dcs.filter(d => d !== sourceDc).forEach(d => {
+        if(d.readyState === 'open') d.send(JSON.stringify(data));
+      });
+    }
+  }
+  if(data.type === 'PEER_EDITOR_ACTION') {
+    if(editingPower && data.powerId === editingPower.powerId) {
+      const iframe = document.getElementById('editor-iframe');
+      if(iframe && iframe.contentWindow) {
+        sendPeerIdToEditor();
+        iframe.contentWindow.postMessage({ type: 'PEER_ACTION', action: data.action, senderId: data.senderId }, '*');
+      }
+    }
+    if(isHost) {
+      rtc.dcs.filter(d => d !== sourceDc).forEach(d => {
+        if(d.readyState === 'open') d.send(JSON.stringify(data));
+      });
+    }
+  }
+}
+
+function inviteMoreLAN() {
+  // Create a new RTCPeerConnection for an additional joiner
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const dc = pc.createDataChannel('origins', { ordered: true });
+  setupHostDataChannel(dc);
+
+  let _offerShown = false;
+  const _showOffer = () => {
+    if(_offerShown) return;
+    _offerShown = true;
+    encodeSignal(pc.localDescription).then(encoded => {
+      // Show invite dialog
+      document.getElementById('rtc-dialog')?.remove();
+      document.body.insertAdjacentHTML('beforeend', `
+        <div id="rtc-dialog" style="position:fixed;inset:0;background:#0008;z-index:9999;display:flex;
+          align-items:center;justify-content:center;font-family:'Sora',sans-serif">
+          <div style="background:#0f0f20;border:1px solid rgba(124,92,231,0.4);border-radius:16px;
+            padding:24px;width:500px;max-height:80vh;overflow-y:auto;">
+            <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:12px">🏠 Invite Another User</div>
+            <div style="font-size:11px;color:#a0a0c0;margin-bottom:8px">1. Send this OFFER to the person joining:</div>
+            <textarea id="rtc-offer-out" readonly style="width:100%;height:100px;background:#0a0a16;border:1px solid #333;
+              border-radius:8px;color:#7c5ce7;font-size:10px;padding:8px;resize:none;font-family:monospace">${encoded}</textarea>
+            <div style="font-size:11px;color:#a0a0c0;margin:12px 0 8px">2. Paste their ANSWER here:</div>
+            <textarea id="rtc-answer-in" placeholder="Paste answer from joiner..." style="width:100%;height:80px;
+              background:#0a0a16;border:1px solid #333;border-radius:8px;color:#fff;font-size:10px;
+              padding:8px;resize:none;font-family:monospace"></textarea>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button onclick="applyRTCAnswerForPC(${JSON.stringify('')})" id="rtc-connect-btn" style="flex:1;background:var(--accent);border:none;color:#fff;
+                border-radius:8px;padding:10px;font-size:12px;font-weight:600;cursor:pointer">✓ Connect</button>
+              <button onclick="document.getElementById('rtc-dialog').remove();rtc._pendingPc?.close();rtc._pendingPc=null;"
+                style="flex:1;background:#1e1e36;border:1px solid #444;color:#aaa;
+                border-radius:8px;padding:10px;font-size:12px;cursor:pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `);
+      // Store pc reference for applyRTCAnswerForPC
+      rtc._pendingPc = pc;
+      // Update connect button to use correct pc
+      document.getElementById('rtc-connect-btn').onclick = () => applyRTCAnswerForPC(pc);
+    });
+  };
+
+  pc.onicecandidate = e => { if(!e.candidate) _showOffer(); };
+  pc.onicegatheringstatechange = () => { if(pc.iceGatheringState === 'complete') _showOffer(); };
+  setTimeout(_showOffer, 1500);
+
+  pc.createOffer().then(offer => pc.setLocalDescription(offer));
+}
+
+async function applyRTCAnswerForPC(pc) {
+  const ta = document.getElementById('rtc-answer-in');
+  if(!ta || !ta.value.trim()) { alert('Paste the answer first'); return; }
+  try {
+    const answer = await decodeSignal(ta.value.trim());
+    await pc.setRemoteDescription(answer);
+    document.getElementById('rtc-dialog')?.remove();
+    rtc._pendingPc = null;
+  } catch(e) {
+    alert('Invalid answer: ' + e.message);
+  }
+}
+
+function endSessionLAN() {
+  if(collab.isHost) {
+    lanBroadcast({ type: 'SESSION_ENDED' });
+  } else {
+    lanSend({ type: 'PEER_LEAVE', connId: 'joiner' });
+  }
+  if(rtc.pc) { rtc.pc.close(); rtc.pc = null; }
+  rtc.dc = null;
+  rtc.dcs = [];
+  document.getElementById('rtc-dialog')?.remove();
+}
+
+function handleJoinLAN() {
+  const nick = document.getElementById('cp-nick')?.value.trim();
+  if(!nick) { alert('Please enter a nickname'); return; }
+  toggleCollabPanel();
+  joinSessionLAN(null, nick);
+}
+
+
+// ── Firebase Signaling ────────────────────────────────────────────────────
+const FB_URL = 'https://originsbuilder-e1491-default-rtdb.europe-west1.firebasedatabase.app';
+const FB_API_KEY = 'AIzaSyCsqg5hN06xOYUEQzQEIL2-NWPjEOZ2JZk';
+const FB_AUTH_URL = 'https://identitytoolkit.googleapis.com/v1/accounts';
+
+// ── Auth State ────────────────────────────────────────────────────────────
+let authUser = null; // {uid, email, username, idToken, refreshToken}
+
+async function fbAuthRequest(endpoint, body) {
+  const res = await fetch(`${FB_AUTH_URL}:${endpoint}?key=${FB_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error.message);
+  return data;
+}
+
+async function fbAuthWrite(path, data, idToken) {
+  const res = await fetch(`${FB_URL}/${path}.json?auth=${idToken}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return await res.json();
+}
+
+async function fbAuthRead(path, idToken) {
+  const res = await fetch(`${FB_URL}/${path}.json${idToken ? '?auth='+idToken : ''}`);
+  return await res.json();
+}
+
+async function signUp(email, password, username) {
+  // Check username availability
+  const uname = username.toLowerCase().trim();
+  if(!/^[a-z0-9_]{3,20}$/.test(uname)) throw new Error('Username must be 3-20 chars, letters/numbers/underscores only');
+  const existing = await fbRead(`usernames/${uname}`);
+  if(existing) throw new Error('Username already taken');
+
+  // Create auth account
+  const data = await fbAuthRequest('signUp', { email, password, returnSecureToken: true });
+  const { localId: uid, idToken, refreshToken } = data;
+
+  // Store user data
+  await fbAuthWrite(`users/${uid}`, { username, email, createdAt: Date.now() }, idToken);
+  await fbAuthWrite(`usernames/${uname}`, uid, idToken);
+
+  authUser = { uid, email, username, idToken, refreshToken };
+  localStorage.setItem('ob-auth', JSON.stringify({ email, refreshToken }));
+  await setPresence(uid, idToken);
+  return authUser;
+}
+
+async function signIn(email, password) {
+  const data = await fbAuthRequest('signInWithPassword', { email, password, returnSecureToken: true });
+  const { localId: uid, idToken, refreshToken } = data;
+
+  // Get username
+  const userData = await fbAuthRead(`users/${uid}`, idToken);
+  const username = userData?.username || email.split('@')[0];
+
+  authUser = { uid, email, username, idToken, refreshToken };
+  localStorage.setItem('ob-auth', JSON.stringify({ email, refreshToken }));
+  await setPresence(uid, idToken);
+  renderAccountUI();
+  return authUser;
+}
+
+async function refreshIdToken(refreshToken) {
+  const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${FB_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grant_type: 'refresh_token', refresh_token: refreshToken })
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error.message);
+  return { idToken: data.id_token, refreshToken: data.refresh_token, uid: data.user_id };
+}
+
+async function autoSignIn() {
+  const saved = localStorage.getItem('ob-auth');
+  if(!saved) return false;
+  try {
+    const { refreshToken } = JSON.parse(saved);
+    const { idToken, uid, refreshToken: newRefresh } = await refreshIdToken(refreshToken);
+    const userData = await fbAuthRead(`users/${uid}`, idToken);
+    if(!userData) return false;
+    authUser = { uid, email: userData.email, username: userData.username, idToken, refreshToken: newRefresh };
+    localStorage.setItem('ob-auth', JSON.stringify({ email: userData.email, refreshToken: newRefresh }));
+    await setPresence(uid, idToken);
+    return true;
+  } catch(e) {
+    localStorage.removeItem('ob-auth');
+    return false;
+  }
+}
+
+function signOut() {
+  if(authUser) clearPresence(authUser.uid, authUser.idToken);
+  authUser = null;
+  localStorage.removeItem('ob-auth');
+  renderAccountUI();
+  renderCollabUI();
+}
+
+async function setPresence(uid, idToken) {
+  await fbAuthWrite(`users/${uid}/online`, true, idToken);
+}
+
+async function clearPresence(uid, idToken) {
+  await fbAuthWrite(`users/${uid}/online`, null, idToken);
+}
+
+// ── Friend System ─────────────────────────────────────────────────────────
+async function searchUser(username) {
+  const uname = username.toLowerCase().trim();
+  const uid = await fbRead(`usernames/${uname}`);
+  if(!uid || uid === authUser?.uid) return null;
+  const userData = await fbAuthRead(`users/${uid}`, authUser?.idToken);
+  if(!userData) return null;
+  return { uid, username: userData.username, online: userData.online || false };
+}
+
+async function sendFriendRequest(targetUid) {
+  if(!authUser) return;
+  await fbAuthWrite(
+    `users/${targetUid}/friendRequests/${authUser.uid}`,
+    { from: authUser.uid, username: authUser.username, timestamp: Date.now() },
+    authUser.idToken
+  );
+}
+
+async function acceptFriendRequest(fromUid) {
+  if(!authUser) return;
+  // Add to both friend lists
+  await fbAuthWrite(`users/${authUser.uid}/friends/${fromUid}`, { since: Date.now() }, authUser.idToken);
+  await fbAuthWrite(`users/${fromUid}/friends/${authUser.uid}`, { since: Date.now() }, authUser.idToken);
+  // Remove request
+  await fbAuthWrite(`users/${authUser.uid}/friendRequests/${fromUid}`, null, authUser.idToken);
+}
+
+async function declineFriendRequest(fromUid) {
+  if(!authUser) return;
+  await fbAuthWrite(`users/${authUser.uid}/friendRequests/${fromUid}`, null, authUser.idToken);
+}
+
+async function removeFriend(friendUid) {
+  if(!authUser) return;
+  await fbAuthWrite(`users/${authUser.uid}/friends/${friendUid}`, null, authUser.idToken);
+  await fbAuthWrite(`users/${friendUid}/friends/${authUser.uid}`, null, authUser.idToken);
+}
+
+async function getFriends() {
+  if(!authUser) return [];
+  const friends = await fbAuthRead(`users/${authUser.uid}/friends`, authUser.idToken);
+  if(!friends) return [];
+  // Get each friend's info
+  const results = await Promise.all(Object.keys(friends).map(async uid => {
+    const data = await fbAuthRead(`users/${uid}`, authUser.idToken);
+    return data ? { uid, username: data.username, online: data.online || false } : null;
+  }));
+  return results.filter(Boolean);
+}
+
+async function getFriendRequests() {
+  if(!authUser) return [];
+  const requests = await fbAuthRead(`users/${authUser.uid}/friendRequests`, authUser.idToken);
+  if(!requests) return [];
+  return Object.entries(requests).map(([uid, data]) => ({ uid, ...data }));
+}
+
+// ── Session Invites ───────────────────────────────────────────────────────
+async function sendInvite(targetUid, roomCode) {
+  if(!authUser) return;
+  await fbAuthWrite(
+    `users/${targetUid}/invite`,
+    { from: authUser.uid, username: authUser.username, roomCode, timestamp: Date.now() },
+    authUser.idToken
+  );
+}
+
+async function checkInvite() {
+  if(!authUser) return null;
+  const invite = await fbAuthRead(`users/${authUser.uid}/invite`, authUser.idToken);
+  if(!invite) return null;
+  // Clear invite after reading
+  await fbAuthWrite(`users/${authUser.uid}/invite`, null, authUser.idToken);
+  return invite;
+}
+
+async function fbWrite(path, data) {
+  await fetch(`${FB_URL}/${path}.json`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
+async function fbRead(path) {
+  const res = await fetch(`${FB_URL}/${path}.json`);
+  return await res.json();
+}
+
+async function fbDelete(path) {
+  await fetch(`${FB_URL}/${path}.json`, { method: 'DELETE' });
+}
+
+async function fbPoll(path, timeout=30000, interval=1000) {
+  const start = Date.now();
+  while(Date.now() - start < timeout) {
+    const data = await fbRead(path);
+    if(data !== null) return data;
+    await new Promise(r => setTimeout(r, interval));
+  }
+  return null;
+}
+
+async function hostSessionFirebase(nsIds) {
+  await fetchTURNCredentials();
+  collab.shareNsIds = nsIds;
+
+  const code = Math.random().toString(36).slice(2,8).toUpperCase();
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const dc = pc.createDataChannel('origins', { ordered: true });
+
+  collab.isHost = true;
+  collab.active = true;
+  collab.fbMode = true;
+  collab.peers = [];
+  collab.roomCode = code;
+  collab.myColor = pickUniqueColor();
+  collab._fbPc = pc;
+  renderCollabUI();
+
+  // Setup data channel
+  setupPeerJSDataChannel(dc, pc);
+
+  let _offerShown = false;
+  const _sendOffer = async () => {
+    if(_offerShown) return;
+    _offerShown = true;
+    const encoded = await encodeSignal(pc.localDescription);
+    await fbWrite(`sessions/${code}/offer`, encoded);
+    console.log('[FB] Offer written, room code:', code);
+
+    // Poll for answer
+    const answer = await fbPoll(`sessions/${code}/answer`);
+    if(!answer) {
+      alert('No one joined within 30 seconds.');
+      fbDelete(`sessions/${code}`);
+      endSession();
+      return;
+    }
+    try {
+      const sdp = await decodeSignal(answer);
+      await pc.setRemoteDescription(sdp);
+      await fbDelete(`sessions/${code}`);
+      console.log('[FB] Answer received, connecting...');
+    } catch(e) {
+      alert('Connection failed: ' + e.message);
+      endSession();
+    }
+  };
+
+  pc.onicecandidate = e => { if(!e.candidate) _sendOffer(); };
+  pc.onicegatheringstatechange = () => { if(pc.iceGatheringState === 'complete') _sendOffer(); };
+  setTimeout(_sendOffer, 1500);
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+}
+
+async function joinSessionFirebase(code, nickname) {
+  await fetchTURNCredentials();
+
+  // Fetch offer from Firebase
+  const offerEncoded = await fbRead(`sessions/${code}/offer`);
+  if(!offerEncoded) {
+    alert('Session not found. Check the room code and try again.');
+    return;
+  }
+
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  collab.isHost = false;
+  collab.fbMode = true;
+  collab.myNickname = nickname;
+
+  pc.ondatachannel = e => {
+    const dc = e.channel;
+    setupJoinerDataChannel(dc, pc, nickname, code);
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    console.log('[FB JOIN] ICE:', pc.iceConnectionState);
+    if(pc.iceConnectionState === 'failed') {
+      alert('Connection failed. Try LAN mode instead.');
+      endSession();
+    }
+  };
+
+  let _answerSent = false;
+  const _sendAnswer = async () => {
+    if(_answerSent) return;
+    _answerSent = true;
+    const encoded = await encodeSignal(pc.localDescription);
+    await fbWrite(`sessions/${code}/answer`, encoded);
+    console.log('[FB] Answer written');
+  };
+
+  pc.onicecandidate = e => { if(!e.candidate) _sendAnswer(); };
+  pc.onicegatheringstatechange = () => { if(pc.iceGatheringState === 'complete') _sendAnswer(); };
+  setTimeout(_sendAnswer, 1500);
+
+  const offer = await decodeSignal(offerEncoded);
+  await pc.setRemoteDescription(offer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+}
+
+// Shared data channel setup for Firebase connections
+function setupPeerJSDataChannel(dc, pc) {
+  dc.onopen = () => {
+    console.log('[FB] Host data channel open');
+    collab._fbPc = pc;
+    dc.send(JSON.stringify({ type: 'STATE_SYNC', state: getSharedState(),
+      hostNickname: collab.myNickname, hostColor: collab.myColor }));
+  };
+  dc.onmessage = e => {
+    try {
+      const data = JSON.parse(e.data);
+      if(data.type === 'PONG') { dc._lastPong = Date.now(); return; }
+      if(data.type === 'PING') { try { dc.send(JSON.stringify({ type: 'PONG' })); } catch(e) {} return; }
+      if(data.type === 'HELLO') {
+        const color = pickUniqueColor();
+        collab.peers.push({ nickname: data.nickname, connId: data.connId, color, dc });
+        renderCollabUI();
+        dc.send(JSON.stringify({ type: 'YOUR_COLOR', color }));
+        dc.send(JSON.stringify({ type: 'STATE_SYNC', state: getSharedState(),
+          hostNickname: collab.myNickname, hostColor: collab.myColor }));
+      }
+      handleFBMessage(data, true, dc);
+    } catch(err) {}
+  };
+  dc.onclose = () => {
+    collab.peers = collab.peers.filter(p => p.dc !== dc);
+    renderCollabUI();
+  };
+}
+
+function setupJoinerDataChannel(dc, pc, nickname, code) {
+  dc.onopen = () => {
+    collab.active = true;
+    collab.roomCode = code.toUpperCase();
+    const connId = 'fb-' + Math.random().toString(36).slice(2,8);
+    dc.send(JSON.stringify({ type: 'HELLO', nickname, connId }));
+    collab._fbDc = dc;
+    collab._connectTimeout = setTimeout(() => {
+      if(collab.active && !collab.isHost) {
+        alert('Connection timed out. Try again.');
+        endSession();
+      }
+    }, 15000);
+    renderCollabUI();
+  };
+  dc.onmessage = e => {
+    try {
+      const data = JSON.parse(e.data);
+      if(data.type === 'PING') { try { dc.send(JSON.stringify({ type: 'PONG' })); } catch(e) {} return; }
+      if(data.type === 'PONG') return;
+      handleFBMessage(data, false, dc);
+    } catch(err) {}
+  };
+  dc.onclose = () => {
+    if(collab.active) {
+      collab.active = false;
+      sessionState = null;
+      state = localState;
+      activeNs = localState.namespaces.length > 0 ? localState.namespaces[0].id : null;
+      renderSidebar(); renderContent(); renderCollabUI();
+    }
+  };
+}
+
+function handleFBMessage(data, isHost, sourceDc) {
+  if(data.type === 'YOUR_COLOR') { collab.myColor = data.color; }
+  if(data.type === 'STATE_SYNC') {
+    if(collab._connectTimeout) { clearTimeout(collab._connectTimeout); collab._connectTimeout = null; }
+    applyRemoteState(data.state, false);
+    if(!isHost && data.hostNickname && !collab.peers.find(p => p.isHost)) {
+      collab.peers = collab.peers.filter(p => !p.isHost);
+      collab.peers.unshift({ nickname: data.hostNickname, color: data.hostColor || '#7c5ce7',
+        connId: 'host', isHost: true });
+      renderCollabUI();
+    }
+  }
+  if(data.type === 'STATE_PATCH') {
+    if(isHost) {
+      applyRemoteState(data.state, true);
+      // Broadcast to other fb peers
+      collab.peers.forEach(p => {
+        if(p.dc && p.dc !== sourceDc && p.dc.readyState === 'open')
+          p.dc.send(JSON.stringify({ type: 'STATE_PATCH', state: getSharedState() }));
+      });
+    } else {
+      applyRemoteState(data.state, false);
+    }
+  }
+  if(data.type === 'PEER_EDITOR_ACTION') {
+    if(editingPower && data.powerId === editingPower.powerId) {
+      const iframe = document.getElementById('editor-iframe');
+      if(iframe && iframe.contentWindow) {
+        sendPeerIdToEditor();
+        iframe.contentWindow.postMessage({ type: 'PEER_ACTION', action: data.action, senderId: data.senderId }, '*');
+      }
+    }
+    if(isHost) {
+      collab.peers.forEach(p => {
+        if(p.dc && p.dc !== sourceDc && p.dc.readyState === 'open')
+          p.dc.send(JSON.stringify(data));
+      });
+    }
+  }
+  if(data.type === 'PEER_DRAG_MOVE' || data.type === 'PEER_DRAG_END') {
+    if(editingPower && data.powerId === editingPower.powerId) {
+      const iframe = document.getElementById('editor-iframe');
+      if(iframe && iframe.contentWindow) iframe.contentWindow.postMessage(data, '*');
+    }
+    if(isHost) {
+      collab.peers.forEach(p => {
+        if(p.dc && p.dc !== sourceDc && p.dc.readyState === 'open')
+          p.dc.send(JSON.stringify(data));
+      });
+    }
+  }
+  if(data.type === 'CHAT_MSG') {
+    receiveChat(data);
+    if(isHost) {
+      collab.peers.forEach(p => {
+        if(p.dc && p.dc !== sourceDc && p.dc.readyState === 'open')
+          p.dc.send(JSON.stringify(data));
+      });
+    }
+  }
+  if(data.type === 'SESSION_ENDED') { endSession(); }
+  if(data.type === 'KICKED') { endSession(); alert('You were kicked.'); }
+}
+function kickPeer(connId) {
+  // Find peer dc in Firebase or LAN mode
+  if(collab.fbMode) {
+    const peer = collab.peers.find(p => p.connId === connId);
+    if(peer && peer.dc && peer.dc.readyState === 'open') {
+      try { peer.dc.send(JSON.stringify({ type: 'KICKED' })); } catch(e) {}
+      try { peer.dc.close(); } catch(e) {}
+    }
+  } else if(collab.lanMode) {
+    const dc = rtc.dcs[collab.peers.findIndex(p => p.connId === connId)];
+    if(dc && dc.readyState === 'open') {
+      try { dc.send(JSON.stringify({ type: 'KICKED' })); } catch(e) {}
+    }
+  }
+  collab.peers = collab.peers.filter(p => p.connId !== connId);
+  renderCollabUI();
+}
+
+function endSession() {
+  if(collab._healthCheck) { clearInterval(collab._healthCheck); collab._healthCheck = null; }
+  if(collab._hostHealthCheck) { clearInterval(collab._hostHealthCheck); collab._hostHealthCheck = null; }
+  if(collab._connectTimeout) { clearTimeout(collab._connectTimeout); collab._connectTimeout = null; }
+  if(collab.fbMode) {
+    const farewell = JSON.stringify({ type: collab.isHost ? 'SESSION_ENDED' : 'PEER_LEAVE' });
+    if(collab.isHost) {
+      collab.peers.forEach(p => { if(p.dc && p.dc.readyState === 'open') try { p.dc.send(farewell); } catch(e) {} });
+    } else if(collab._fbDc && collab._fbDc.readyState === 'open') {
+      try { collab._fbDc.send(farewell); } catch(e) {}
+    }
+    if(collab._fbPc) { try { collab._fbPc.close(); } catch(e) {} collab._fbPc = null; }
+    collab.fbMode = false; collab._fbDc = null;
+  }
+  if(collab.lanMode) { endSessionLAN(); collab.lanMode = false; collab.lanBaseUrl = null; collab.lanClientId = null; }
+  const wasJoiner = collab.active && !collab.isHost;
+  // Tell all peers we are leaving
+  if(collab.isHost) {
+    // Host tells all joiners session is ending
+    collabBroadcast({ type: 'SESSION_ENDED' });
+  } else {
+    collabBroadcast({ type: 'PEER_LEAVE', connId: collab.peer?.id });
+  }
+  // Close all connections first, then destroy peer
+  collab.conns.forEach(c => { try { c.close(); } catch(e) {} });
+  if(collab.peer) {
+    setTimeout(() => { try { collab.peer.destroy(); } catch(e) {} }, 200);
+  }
+  collab.peer = null;
+  collab.conns = [];
+  collab.peers = [];
+  collab.active = false;
+  collab.isHost = false;
+  collab.roomCode = '';
+  collab.showPanel = false;
+  // Switch back to local state for joiner
+  if(wasJoiner) {
+    sessionState = null;
+    state = localState;
+    activeNs = localState.namespaces.length > 0 ? localState.namespaces[0].id : null;
+    renderSidebar();
+    renderContent();
+  }
+  renderCollabUI();
+}
+
+// Called whenever manager state changes — broadcast to peers
+function saveAndSync() {
+  if(collab.fbMode) {
+    if(collab.isHost) {
+      save();
+      const msg = JSON.stringify({ type: 'STATE_PATCH', state: getSharedState() });
+      collab.peers.forEach(p => {
+        if(p.dc && p.dc.readyState === 'open') try { p.dc.send(msg); } catch(e) {}
+      });
+    } else {
+      sendToHost({ type: 'STATE_PATCH', state: JSON.parse(JSON.stringify(sessionState || state)) });
+    }
+    return;
+  }
+  if(collab.lanMode) {
+    if(collab.isHost) {
+      save();
+      lanBroadcast({ type: 'STATE_PATCH', state: getSharedState() });
+    } else {
+      sendToHost({ type: 'STATE_PATCH', state: JSON.parse(JSON.stringify(sessionState || state)) });
+    }
+    return;
+  }
+  save();
+}
+
+// ── Listen for settings updates ──────────────────────────────────────────
+window.addEventListener('storage', e => {
+  if(e.key === 'origins-settings-updated') {
+    // If in active collab session, apply settings without full reload
+    if(collab.active) {
+      applyManagerSettings();
+    } else {
+      window.location.reload();
+    }
+  }
+});
+
+// ── Collab UI ─────────────────────────────────────────────────────────────
+function toggleCollabPanel() {
+  collab.showPanel = !collab.showPanel;
+  if(!collab.showPanel) collab._panelMode = 'main';
+  // Close account panel when opening collab
+  if(collab.showPanel) {
+    document.getElementById('account-panel').style.display = 'none';
+    accountPanel.open = false;
+  }
+  document.getElementById('collab-panel').style.display = collab.showPanel ? 'block' : 'none';
+  if(collab.showPanel) renderCollabUI();
+}
+
+const accountPanel = { open: false };
+
+function toggleAccountPanel() {
+  accountPanel.open = !accountPanel.open;
+  // Close collab panel
+  if(accountPanel.open) {
+    collab.showPanel = false;
+    collab._panelMode = 'main';
+    document.getElementById('collab-panel').style.display = 'none';
+  }
+  const panel = document.getElementById('account-panel');
+  panel.style.display = accountPanel.open ? 'block' : 'none';
+  if(accountPanel.open) renderAccountUI();
+}
+
+async function renderAccountUI() {
+  const el = document.getElementById('account-panel-content');
+  if(!el) return;
+
+  if(!authUser) {
+    // Login/signup form
+    const mode = accountPanel._mode || 'login';
+    el.innerHTML = `
+      <div style="font-size:14px;font-weight:700;margin-bottom:16px">${mode === 'login' ? 'Sign In' : 'Create Account'}</div>
+      <input id="auth-email" type="email" placeholder="Email" style="width:100%;background:#0a0a16;
+        border:1px solid rgba(124,92,231,0.3);border-radius:8px;padding:9px 12px;font-size:13px;
+        color:#fff;margin-bottom:8px;outline:none;font-family:'Sora',sans-serif"/>
+      <input id="auth-password" type="password" placeholder="Password" style="width:100%;background:#0a0a16;
+        border:1px solid rgba(124,92,231,0.3);border-radius:8px;padding:9px 12px;font-size:13px;
+        color:#fff;margin-bottom:${mode === 'signup' ? '8' : '12'}px;outline:none;font-family:'Sora',sans-serif"/>
+      ${mode === 'signup' ? `<input id="auth-username" placeholder="Username (3-20 chars, a-z 0-9 _)" style="width:100%;background:#0a0a16;
+        border:1px solid rgba(124,92,231,0.3);border-radius:8px;padding:9px 12px;font-size:13px;
+        color:#fff;margin-bottom:12px;outline:none;font-family:'Sora',sans-serif"/>` : ''}
+      <div id="auth-error" style="font-size:11px;color:#ef4444;margin-bottom:8px;display:none"></div>
+      <button onclick="handleAuth('${mode}')" style="width:100%;background:var(--accent);border:none;color:#fff;
+        border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;
+        font-family:'Sora',sans-serif">${mode === 'login' ? 'Sign In' : 'Create Account'}</button>
+      <div style="text-align:center;font-size:11px;color:var(--muted)">
+        ${mode === 'login' 
+          ? `No account? <span onclick="accountPanel._mode='signup';renderAccountUI();" style="color:var(--accent);cursor:pointer">Sign up</span>`
+          : `Have an account? <span onclick="accountPanel._mode='login';renderAccountUI();" style="color:var(--accent);cursor:pointer">Sign in</span>`
+        }
+      </div>`;
+  } else {
+    // Logged in — show account info, friends, invites
+    const [friends, requests] = await Promise.all([getFriends(), getFriendRequests()]);
+    const accountMode = accountPanel._accountMode || 'main';
+
+    if(accountMode === 'main') {
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;
+            align-items:center;justify-content:center;font-size:16px;font-weight:700">
+            ${authUser.username[0].toUpperCase()}</div>
+          <div>
+            <div style="font-size:14px;font-weight:700">${authUser.username}</div>
+            <div style="font-size:11px;color:var(--muted)">${authUser.email}</div>
+          </div>
+          <button onclick="signOut()" style="margin-left:auto;background:none;border:1px solid rgba(239,68,68,0.4);
+            color:#ef4444;border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;
+            font-family:'Sora',sans-serif">Sign out</button>
+        </div>
+
+        ${requests.length > 0 ? `
+        <div style="background:#1a1a30;border-radius:8px;padding:10px;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:var(--accent2);margin-bottom:8px">
+            Friend Requests (${requests.length})</div>
+          ${requests.map(r => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <div style="font-size:12px;flex:1">${r.username}</div>
+              <button onclick="handleAcceptFriend('${r.uid}')" style="background:var(--accent);border:none;color:#fff;
+                border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">✓</button>
+              <button onclick="handleDeclineFriend('${r.uid}')" style="background:none;border:1px solid #444;color:#aaa;
+                border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">✕</button>
+            </div>`).join('')}
+        </div>` : ''}
+
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">
+            Friends (${friends.length})</div>
+          ${friends.length === 0 
+            ? '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">No friends yet</div>'
+            : friends.map(f => `
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 0">
+                <div style="width:8px;height:8px;border-radius:50%;background:${f.online ? '#10b981' : '#444'};flex-shrink:0"></div>
+                <div style="font-size:12px;flex:1;font-weight:600">${f.username}</div>
+                ${collab.active && collab.isHost ? `
+                  <button onclick="handleInviteFriend('${f.uid}')" style="background:#1e1e36;border:1px solid rgba(124,92,231,0.4);
+                    color:rgba(124,92,231,0.8);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">Invite</button>` : ''}
+                <button onclick="handleRemoveFriend('${f.uid}')" style="background:none;border:none;color:#444;
+                  cursor:pointer;font-size:12px;padding:0 2px">✕</button>
+              </div>`).join('')}
+        </div>
+
+        <button onclick="accountPanel._accountMode='addFriend';renderAccountUI();" 
+          style="width:100%;background:#1e1e36;border:1px solid rgba(124,92,231,0.5);
+          color:rgba(124,92,231,0.8);border-radius:10px;padding:9px;font-size:12px;font-weight:600;
+          cursor:pointer;font-family:'Sora',sans-serif">+ Add Friend</button>`;
+
+    } else if(accountMode === 'addFriend') {
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+          <button onclick="accountPanel._accountMode='main';renderAccountUI();" style="background:none;border:none;
+            color:var(--muted);cursor:pointer;font-size:16px;padding:0">←</button>
+          <div style="font-size:14px;font-weight:700">Add Friend</div>
+        </div>
+        <input id="friend-search" placeholder="Search by username" style="width:100%;background:#0a0a16;
+          border:1px solid rgba(124,92,231,0.3);border-radius:8px;padding:9px 12px;font-size:13px;
+          color:#fff;margin-bottom:10px;outline:none;font-family:'Sora',sans-serif"/>
+        <button onclick="handleSearchFriend()" style="width:100%;background:var(--accent);border:none;color:#fff;
+          border-radius:10px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px;
+          font-family:'Sora',sans-serif">Search</button>
+        <div id="friend-search-result"></div>`;
+    }
+  }
+}
+
+async function handleAuth(mode) {
+  const email = document.getElementById('auth-email')?.value.trim();
+  const password = document.getElementById('auth-password')?.value;
+  const errEl = document.getElementById('auth-error');
+  errEl.style.display = 'none';
+
+  try {
+    if(mode === 'signup') {
+      const username = document.getElementById('auth-username')?.value.trim();
+      if(!username) { errEl.textContent = 'Please enter a username'; errEl.style.display='block'; return; }
+      await signUp(email, password, username);
+    } else {
+      await signIn(email, password);
+    }
+    const label = document.getElementById('account-btn-label');
+    if(label) label.textContent = '👤 ' + authUser.username;
+    renderAccountUI();
+  } catch(e) {
+    errEl.textContent = e.message.replace('_', ' ');
+    errEl.style.display = 'block';
+  }
+}
+
+async function handleSearchFriend() {
+  const username = document.getElementById('friend-search')?.value.trim();
+  const el = document.getElementById('friend-search-result');
+  if(!username || !el) return;
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted)">Searching...</div>';
+  const user = await searchUser(username);
+  if(!user) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted)">User not found</div>';
+    return;
+  }
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;padding:10px;background:#0a0a16;border-radius:8px">
+      <div style="font-size:13px;font-weight:600;flex:1">${user.username}</div>
+      <button onclick="handleSendFriendRequest('${user.uid}')" style="background:var(--accent);border:none;color:#fff;
+        border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer">Add Friend</button>
+    </div>`;
+}
+
+async function handleSendFriendRequest(uid) {
+  await sendFriendRequest(uid);
+  document.getElementById('friend-search-result').innerHTML =
+    '<div style="font-size:12px;color:#10b981">Friend request sent!</div>';
+}
+
+async function handleAcceptFriend(uid) {
+  await acceptFriendRequest(uid);
+  renderAccountUI();
+}
+
+async function handleDeclineFriend(uid) {
+  await declineFriendRequest(uid);
+  renderAccountUI();
+}
+
+async function handleRemoveFriend(uid) {
+  if(confirm('Remove this friend?')) {
+    await removeFriend(uid);
+    renderAccountUI();
+  }
+}
+
+async function handleInviteFriend(uid) {
+  if(!collab.active || !collab.roomCode) return;
+  await sendInvite(uid, collab.roomCode);
+  alert('Invite sent!');
+}
+
+function renderCollabUI() {
+  // Update share button indicator
+  const indicator = document.getElementById('share-indicator');
+  const label = document.getElementById('share-btn-label');
+  if(indicator) indicator.style.display = collab.active ? 'inline-block' : 'none';
+  if(label) label.textContent = collab.active ? (collab.isHost ? `${collab.peers.length} connected` : 'In Session') : 'Share';
+  const chatBtn = document.getElementById('chat-btn');
+  if(chatBtn) chatBtn.style.display = collab.active ? 'block' : 'none';
+  if(!collab.active) { chatOpen = false; chatMessages = []; chatUnread = 0; const cp=document.getElementById('chat-panel'); if(cp) cp.style.display='none'; }
+
+  const panel = document.getElementById('collab-panel');
+  if(!panel || !collab.showPanel) return;
+
+  if(!collab.active) {
+    // ── Not in session — show mode picker ──────────────────────────────
+    const panelMode = collab._panelMode || 'main';
+
+    if(panelMode === 'main') {
+      panel.innerHTML = `
+        <div style="font-size:14px;font-weight:700;margin-bottom:16px">Share Workspace</div>
+        <button onclick="collab._panelMode='host';renderCollabUI();" style="width:100%;background:var(--accent);border:none;color:#fff;
+          border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;
+          font-family:'Sora',sans-serif">🌐 Host via Internet</button>
+        <button onclick="collab._panelMode='hostlan';renderCollabUI();" style="width:100%;background:#1e1e36;
+          border:1px solid rgba(124,92,231,0.5);color:rgba(124,92,231,0.8);border-radius:10px;padding:11px;
+          font-size:13px;font-weight:600;cursor:pointer;margin-bottom:16px;font-family:'Sora',sans-serif">🏠 Host via LAN</button>
+        <div style="font-size:10px;color:var(--muted);text-align:center;margin-bottom:16px">— or join a session —</div>
+        <button onclick="collab._panelMode='join';renderCollabUI();" style="width:100%;background:#1e1e36;
+          border:1px solid rgba(124,92,231,0.5);color:rgba(124,92,231,0.8);border-radius:10px;padding:11px;
+          font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:'Sora',sans-serif">🔗 Join via Internet</button>
+        <button onclick="collab._panelMode='joinlan';renderCollabUI();" style="width:100%;background:#1e1e36;
+          border:1px solid rgba(124,92,231,0.5);color:rgba(124,92,231,0.8);border-radius:10px;padding:11px;
+          font-size:13px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif">🏠 Join via LAN</button>`;
+
+    } else if(panelMode === 'host' || panelMode === 'hostlan') {
+      const isLAN = panelMode === 'hostlan';
+      panel.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+          <button onclick="collab._panelMode='main';renderCollabUI();" style="background:none;border:none;
+            color:var(--muted);cursor:pointer;font-size:16px;padding:0;line-height:1">←</button>
+          <div style="font-size:14px;font-weight:700">${isLAN ? '🏠 Host via LAN' : '🌐 Host via Internet'}</div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Your Nickname</div>
+        <input id="cp-host-nick" placeholder="e.g. Density" maxlength="20" value="${authUser?.username||''}" style="width:100%;background:#0a0a16;
+          border:1px solid rgba(124,92,231,0.3);border-radius:8px;padding:9px 12px;font-size:13px;
+          color:#fff;margin-bottom:12px;outline:none;font-family:'Sora',sans-serif"/>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Namespaces to share</div>
+        <div style="background:#0a0a16;border:1px solid rgba(124,92,231,0.3);border-radius:8px;
+          padding:8px;margin-bottom:14px;max-height:140px;overflow-y:auto;">
+          ${localState.namespaces.length === 0
+            ? '<div style="font-size:12px;color:var(--muted);padding:6px 4px">No namespaces yet</div>'
+            : localState.namespaces.map(n => `
+              <label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;
+                cursor:pointer;font-size:13px" onmouseover="this.style.background='#1e1e36'"
+                onmouseout="this.style.background=''">
+                <input type="checkbox" id="cp-ns-${n.id}" value="${n.id}"
+                  style="accent-color:var(--accent);width:14px;height:14px;cursor:pointer">
+                ${n.name}
+              </label>`).join('')}
+        </div>
+        <button onclick="${isLAN ? 'handleHostLAN' : 'handleHost'}()" style="width:100%;background:var(--accent);border:none;color:#fff;
+          border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;
+          font-family:'Sora',sans-serif">Start Session</button>`;
+
+    } else if(panelMode === 'join') {
+      panel.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+          <button onclick="collab._panelMode='main';renderCollabUI();" style="background:none;border:none;
+            color:var(--muted);cursor:pointer;font-size:16px;padding:0;line-height:1">←</button>
+          <div style="font-size:14px;font-weight:700">🔗 Join via Internet</div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Your Nickname</div>
+        <input id="cp-nick" placeholder="e.g. Density" maxlength="20" value="${authUser?.username||''}" style="width:100%;background:#0a0a16;
+          border:1px solid rgba(124,92,231,0.3);border-radius:8px;padding:9px 12px;font-size:13px;
+          color:#fff;margin-bottom:10px;outline:none;font-family:'Sora',sans-serif"/>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Room Code</div>
+        <input id="cp-code" placeholder="e.g. XK4R2M" maxlength="6" style="width:100%;background:#0a0a16;
+          border:1px solid rgba(124,92,231,0.3);border-radius:8px;padding:9px 12px;font-size:13px;
+          color:#fff;margin-bottom:14px;outline:none;text-transform:uppercase;letter-spacing:0.15em;
+          font-family:'Sora',sans-serif"/>
+        <button onclick="handleJoin()" style="width:100%;background:var(--accent);border:none;color:#fff;
+          border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;
+          font-family:'Sora',sans-serif">Join Session</button>`;
+
+    } else if(panelMode === 'joinlan') {
+      panel.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+          <button onclick="collab._panelMode='main';renderCollabUI();" style="background:none;border:none;
+            color:var(--muted);cursor:pointer;font-size:16px;padding:0;line-height:1">←</button>
+          <div style="font-size:14px;font-weight:700">🏠 Join via LAN</div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Your Nickname</div>
+        <input id="cp-nick" placeholder="e.g. Density" maxlength="20" style="width:100%;background:#0a0a16;
+          border:1px solid rgba(124,92,231,0.3);border-radius:8px;padding:9px 12px;font-size:13px;
+          color:#fff;margin-bottom:14px;outline:none;font-family:'Sora',sans-serif"/>
+        <button onclick="handleJoinLAN()" style="width:100%;background:var(--accent);border:none;color:#fff;
+          border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;
+          font-family:'Sora',sans-serif">Join Session</button>`;
+    }
+  } else {
+    // ── Active session ─────────────────────────────────────────────────
+    const sharedNames = localState.namespaces.filter(n => collab.shareNsIds.includes(n.id)).map(n=>n.name);
+    const roomCodeHtml = collab.isHost ? `
+      <div style="font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px">Sharing</div>
+      <div style="font-size:12px;font-weight:600;color:var(--accent2);margin-bottom:12px">${sharedNames.join(', ') || 'None'}</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px">${collab.lanMode ? 'LAN Address' : 'Room Code'}</div>
+      <div onclick="navigator.clipboard.writeText('${collab.roomCode}')" style="font-size:${collab.lanMode?'14':'22'}px;font-weight:800;
+        letter-spacing:${collab.lanMode?'0.05':'0.25'}em;text-align:center;background:#0a0a16;border-radius:10px;padding:12px;
+        border:1px solid rgba(124,92,231,0.3);cursor:pointer;margin-bottom:4px">${collab.roomCode}</div>
+      <div style="font-size:10px;color:var(--muted);text-align:center;margin-bottom:16px">Click to copy · ${collab.lanMode ? 'Share with LAN peers' : 'Share with friends'}</div>` : `
+      <div style="background:#065f46;border-radius:10px;padding:10px 14px;margin-bottom:16px">
+        <div style="font-size:11px;color:#6ee7b7">Connected as ${collab.nickname}</div>
+        <div style="font-size:13px;font-weight:600">Room ${collab.roomCode}</div>
+      </div>`;
+
+    const selfHtml = `
+      <div style="font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">You</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#0a0a16;
+        border-radius:8px;margin-bottom:12px">
+        <div style="width:8px;height:8px;border-radius:50%;background:${collab.myColor||'#7c5ce7'};flex-shrink:0;box-shadow:0 0 6px ${collab.myColor||'#7c5ce7'}"></div>
+        <div style="font-size:12px;font-weight:600;flex:1">${collab.myNickname || 'You'}</div>
+        <div style="font-size:10px;color:var(--muted)">${collab.isHost ? 'Host' : 'Joined'}</div>
+      </div>`;
+
+    const peersHtml = collab.isHost ? `
+      ${selfHtml}
+      <div style="font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">
+        Connected (${collab.peers.length})</div>
+      <div style="margin-bottom:16px">
+        ${collab.peers.length === 0
+          ? '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">Waiting for players...</div>'
+          : collab.peers.map(p => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#0a0a16;
+              border-radius:8px;margin-bottom:4px">
+              <div style="width:8px;height:8px;border-radius:50%;background:${p.color};flex-shrink:0;box-shadow:0 0 6px ${p.color}"></div>
+              <div style="font-size:12px;font-weight:600;flex:1">${p.nickname}</div>
+              <button onclick="kickPeer('${p.connId}')" style="background:none;border:none;color:#ef444488;
+                cursor:pointer;font-size:14px;padding:0 2px;line-height:1" title="Kick">✕</button>
+            </div>`).join('')
+        }
+      </div>
+
+      <div style="font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px">Session Settings</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        ${['allowCreate','allowDelete','allowEdit'].map(key => {
+          const labels = {allowCreate:'Others can create powers/origins',allowDelete:'Others can delete',allowEdit:'Others can edit powers'};
+          return `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+            <input type="checkbox" ${collab.settings[key]?'checked':''} onchange="updateSetting('${key}',this.checked)"
+              style="accent-color:var(--accent)"> ${labels[key]}</label>`;
+        }).join('')}
+      </div>` : `
+      ${selfHtml}
+      <div style="font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px">
+        In Session (${collab.peers.length + 1})</div>
+      <div style="margin-bottom:16px">
+        ${collab.peers.map(p => `
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#0a0a16;
+            border-radius:8px;margin-bottom:4px">
+            <div style="width:8px;height:8px;border-radius:50%;background:${p.color};flex-shrink:0;box-shadow:0 0 6px ${p.color}"></div>
+            <div style="font-size:12px;font-weight:600;flex:1">${p.nickname}</div>
+            <div style="font-size:10px;color:var(--muted)">${p.isHost ? 'Host' : ''}</div>
+          </div>`).join('') || '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">No other users</div>'}
+      </div>`;
+
+    const inviteBtn = collab.isHost && collab.lanMode ? `
+      <button onclick="inviteMoreLAN();toggleCollabPanel();" style="width:100%;background:#1e1e36;
+        border:1px solid rgba(124,92,231,0.5);color:rgba(124,92,231,0.8);border-radius:10px;padding:10px;
+        font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:'Sora',sans-serif">
+        + Invite Another</button>` : '';
+
+    const endBtn = `<button onclick="endSession();toggleCollabPanel();" style="width:100%;background:transparent;
+      border:1px solid rgba(239,68,68,0.4);color:#ef4444;border-radius:10px;padding:10px;
+      font-size:12px;font-weight:600;cursor:pointer;font-family:'Sora',sans-serif">
+      ${collab.isHost ? '✕ End Session' : '✕ Leave Session'}</button>`;
+
+    panel.innerHTML = roomCodeHtml + peersHtml + inviteBtn + endBtn;
+  }
+}
+
+function handleHost() {
+  let nick = document.getElementById('cp-host-nick')?.value.trim();
+  if(!nick && authUser) nick = authUser.username;
+  if(!nick) { alert('Please enter a nickname'); return; }
+  const checked = localState.namespaces
+    .filter(n => document.getElementById('cp-ns-'+n.id)?.checked)
+    .map(n => n.id);
+  if(checked.length === 0) { alert('Please select at least one namespace to share'); return; }
+  collab.myNickname = nick;
+  hostSessionFirebase(checked);
+  toggleCollabPanel();
+}
+
+function handleHostLAN() {
+  const nick = document.getElementById('cp-host-nick')?.value.trim();
+  if(!nick) { alert('Please enter a nickname'); return; }
+  const checked = localState.namespaces
+    .filter(n => document.getElementById('cp-ns-'+n.id)?.checked)
+    .map(n => n.id);
+  if(checked.length === 0) { alert('Please select at least one namespace to share'); return; }
+  collab.myNickname = nick;
+  hostSessionLAN(checked);
+  toggleCollabPanel();
+}
+
+function handleJoin() {
+  const nick = document.getElementById('cp-nick')?.value.trim();
+  const code = document.getElementById('cp-code')?.value.trim();
+  if(!nick) { alert('Please enter a nickname'); return; }
+  if(!code || code.length < 4) { alert('Please enter a valid room code'); return; }
+  joinSessionFirebase(code, nick);
+  toggleCollabPanel();
+}
+
+function sendChat(text) {
+  if(!text.trim() || !collab.active) return;
+  const msg = {
+    type: 'CHAT_MSG',
+    nickname: collab.myNickname || 'Unknown',
+    text: text.trim(),
+    timestamp: Date.now(),
+    color: collab.myColor || '#7c5ce7'
+  };
+  // Add to own chat
+  chatMessages.push(msg);
+  renderChat();
+  // Broadcast to peers
+  if(collab.lanMode) {
+    if(collab.isHost) lanBroadcast(msg);
+    else lanSend(msg, null, 'host');
+  } else if(collab.isHost) {
+    collabBroadcast(msg);
+  } else {
+    sendToHost(msg);
+  }
+}
+
+function receiveChat(msg) {
+  chatMessages.push(msg);
+  if(!chatOpen) {
+    chatUnread++;
+    updateChatBadge();
+  }
+  renderChat();
+  // Forward to editor iframe
+  const iframe = document.getElementById('editor-iframe');
+  if(iframe && iframe.contentWindow) {
+    try { iframe.contentWindow.postMessage({ type: 'CHAT_BADGE', unread: chatUnread }, '*'); } catch(e) {}
+  }
+}
+
+function renderChat() {
+  const el = document.getElementById('chat-messages');
+  if(!el) return;
+  el.innerHTML = chatMessages.map(m => {
+    const time = new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    return `<div style="margin-bottom:10px">
+      <span style="font-size:11px;font-weight:700;color:${m.color}">${m.nickname}</span>
+      <span style="font-size:10px;color:#444;margin-left:6px">${time}</span>
+      <div style="font-size:13px;color:#e0e0f0;margin-top:2px;word-break:break-word">${m.text}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateChatBadge() {
+  const badge = document.getElementById('chat-badge');
+  if(badge) {
+    badge.style.display = chatUnread > 0 ? 'flex' : 'none';
+    badge.textContent = chatUnread > 9 ? '9+' : chatUnread;
+  }
+  // Tell editor about unread count
+  const iframe = document.getElementById('editor-iframe');
+  if(iframe && iframe.contentWindow) {
+    try { iframe.contentWindow.postMessage({ type: 'CHAT_BADGE', unread: chatUnread }, '*'); } catch(e) {}
+  }
+}
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  const panel = document.getElementById('chat-panel');
+  if(panel) panel.style.display = chatOpen ? 'flex' : 'none';
+  if(chatOpen) {
+    chatUnread = 0;
+    updateChatBadge();
+    renderChat();
+    setTimeout(() => document.getElementById('chat-input')?.focus(), 50);
+  }
+}
+
+function updateSetting(key, val) {
+  collab.settings[key] = val;
+  const msg = { type: 'SETTINGS_UPDATE', settings: collab.settings };
+  if(collab.lanMode) lanBroadcast(msg);
+  else collabBroadcast(msg);
+  renderCollabUI();
+}
+
+// ── Apply settings to CSS vars ────────────────────────────────────────────
+function applyManagerSettings(){
+  const ms = (() => { try { return JSON.parse(localStorage.getItem('origins-editor-settings') || '{}'); } catch(e) { return {}; } })();
+  const root = document.documentElement;
+  root.style.setProperty('--bg', ms.managerBg || '#0a0a16');
+  root.style.setProperty('--panel', ms.managerPanel || '#0f0f20');
+  root.style.setProperty('--accent', ms.managerAccent || '#7c5ce7');
+  root.style.setProperty('--accent2', ms.managerAccent2 || '#00d2d3');
+  document.body.style.fontFamily = ms.font || "'Sora',sans-serif";
+}
+applyManagerSettings();
+
+// ── Init ──────────────────────────────────────────────────────────────────
+renderSidebar();
+if (localState.namespaces.length > 0) selectNs(localState.namespaces[0].id);
+
+// Auto sign in
+autoSignIn().then(signedIn => {
+  if(signedIn) {
+    const label = document.getElementById('account-btn-label');
+    if(label) label.textContent = '👤 ' + authUser.username;
+    // Check for pending invites
+    checkInvite().then(invite => {
+      if(invite && Date.now() - invite.timestamp < 300000) { // 5 min window
+        if(confirm(`${invite.username} invited you to a session. Join now?`)) {
+          toggleCollabPanel();
+          collab._panelMode = 'join';
+          renderCollabUI();
+          setTimeout(() => {
+            const codeEl = document.getElementById('cp-code');
+            const nickEl = document.getElementById('cp-nick');
+            if(codeEl) codeEl.value = invite.roomCode;
+            if(nickEl) nickEl.value = authUser.username;
+          }, 100);
+        }
+      }
+    });
+  }
+});
+</script>
+</body>
+</html>

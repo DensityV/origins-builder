@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Origins Builder — Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#0a0a16;--panel:#0f0f20;--surface:#161628;--surface2:#1e1e36;
+  --border:#ffffff0d;--border2:#ffffff18;
+  --accent:#7c5ce7;--accent2:#00d2d3;--accent3:#fd79a8;
+  --text:#f0f0f8;--muted:#7878a8;
+  --green:#1B9E6E;--green-dark:#0a4a35;
+  --teal:#0e7490;--teal-dark:#083344;
+  --purple:#7c3aed;--purple-dark:#2e1065;
+  --orange:#b45309;--orange-dark:#451a03;
+  --meta:#0891b2;
+  --font:'Sora',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+body::before{content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse 70% 40% at 15% 10%,rgba(124,92,231,0.1) 0%,transparent 60%),
+             radial-gradient(ellipse 50% 35% at 85% 90%,rgba(0,210,211,0.07) 0%,transparent 60%);
+  pointer-events:none;z-index:0;}
+body::after{content:'';position:fixed;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,0.07) 1.5px,transparent 1.5px);
+  background-size:28px 28px;pointer-events:none;z-index:0;}
+
+/* Header */
+header{position:relative;z-index:10;background:var(--panel);border-bottom:1px solid var(--border2);
+  padding:0 32px;height:56px;display:flex;align-items:center;gap:20px;flex-shrink:0;}
+header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent)66,transparent);}
+.logo{font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.12em;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+header h1{font-size:13px;font-weight:400;color:var(--muted);}
+.header-btns{margin-left:auto;display:flex;gap:8px;}
+.btn{font-family:var(--font);font-size:11px;font-weight:600;padding:7px 16px;border-radius:8px;
+  border:none;cursor:pointer;transition:all 0.15s;display:flex;align-items:center;gap:6px;}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border2);}
+.btn-secondary:hover{border-color:var(--accent)66;color:var(--accent);}
+
+/* Layout */
+.main{display:flex;flex:1;overflow:hidden;position:relative;z-index:1;height:calc(100vh - 56px);}
+
+/* Sidebar nav */
+.sidenav{width:240px;background:var(--panel);border-right:1px solid var(--border);
+  padding:20px 12px;display:flex;flex-direction:column;gap:2px;flex-shrink:0;overflow-y:auto;
+  position:sticky;top:0;height:calc(100vh - 56px);}
+.nav-section{font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--muted);padding:12px 10px 6px;margin-top:4px;}
+.nav-item{padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;
+  color:var(--muted);transition:all 0.1s;border:1px solid transparent;display:flex;align-items:center;gap:8px;}
+.nav-item:hover{background:var(--surface2);color:var(--text);}
+.nav-item.active{background:var(--accent)15;border-color:var(--accent)33;color:var(--accent);font-weight:600;}
+.nav-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:40px 48px;max-width:900px;}
+
+/* Sections */
+.section{margin-bottom:60px;}
+.section-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:0.1em;
+  text-transform:uppercase;color:var(--accent);background:var(--accent)15;
+  border:1px solid var(--accent)33;border-radius:6px;padding:3px 10px;margin-bottom:12px;}
+.section h2{font-size:28px;font-weight:800;letter-spacing:-0.03em;margin-bottom:8px;line-height:1.2;}
+.section .lead{font-size:15px;color:var(--muted);line-height:1.7;margin-bottom:24px;}
+.section p{font-size:14px;line-height:1.8;color:var(--text);opacity:0.85;margin-bottom:16px;}
+.section h3{font-size:17px;font-weight:700;margin:28px 0 10px;letter-spacing:-0.01em;}
+.section h4{font-size:13px;font-weight:700;margin:20px 0 8px;color:var(--accent2);}
+
+/* Divider */
+hr{border:none;border-top:1px solid var(--border2);margin:32px 0;}
+
+/* Block preview cards */
+.block-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:20px 0;}
+.block-card{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);}
+.block-header{padding:10px 14px;font-size:11px;font-weight:700;letter-spacing:0.05em;}
+.block-body{padding:10px 14px;font-size:12px;line-height:1.6;opacity:0.85;}
+
+/* Info boxes */
+.info-box{border-radius:12px;padding:16px 20px;margin:16px 0;border-left:3px solid;}
+.info-box.tip{background:var(--accent)10;border-color:var(--accent);}
+.info-box.note{background:var(--accent2)10;border-color:var(--accent2);}
+.info-box.warn{background:#fd79a810;border-color:#fd79a8;}
+.info-box-title{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;}
+.info-box.tip .info-box-title{color:var(--accent);}
+.info-box.note .info-box-title{color:var(--accent2);}
+.info-box.warn .info-box-title{color:#fd79a8;}
+.info-box p{font-size:13px;line-height:1.7;margin:0;}
+
+/* Step list */
+.steps{display:flex;flex-direction:column;gap:16px;margin:20px 0;}
+.step{display:flex;gap:16px;align-items:flex-start;}
+.step-num{width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;
+  font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.step-content{flex:1;}
+.step-title{font-size:14px;font-weight:600;margin-bottom:4px;}
+.step-desc{font-size:13px;color:var(--muted);line-height:1.6;}
+
+/* Hierarchy diagram */
+.hierarchy{display:flex;flex-direction:column;gap:8px;margin:20px 0;}
+.hierarchy-row{display:flex;align-items:center;gap:12px;}
+.hierarchy-indent{width:24px;height:2px;background:var(--border2);flex-shrink:0;}
+.hierarchy-box{padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid;}
+
+/* Shortcut table */
+.shortcut-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;}
+.shortcut-table th{text-align:left;padding:8px 12px;font-size:10px;font-weight:700;
+  letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border2);}
+.shortcut-table td{padding:10px 12px;border-bottom:1px solid var(--border);}
+.shortcut-table tr:last-child td{border-bottom:none;}
+.kbd{font-family:var(--mono);font-size:11px;background:var(--surface2);border:1px solid var(--border2);
+  border-radius:5px;padding:2px 7px;color:var(--accent2);}
+
+/* Code block */
+.code{font-family:var(--mono);font-size:12px;background:var(--surface);border:1px solid var(--border2);
+  border-radius:10px;padding:16px 20px;margin:12px 0;line-height:1.8;overflow-x:auto;}
+.code .key{color:#fd79a8;}.code .val{color:var(--accent2);}.code .str{color:#a8e6cf;}
+.code .comment{color:var(--muted);}
+
+::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">ORIGINS BUILDER</div>
+  <h1>Guide & Documentation</h1>
+  <div class="header-btns">
+    <button class="btn btn-secondary" id="back-btn" onclick="goBack()">← Back</button>
+  </div>
+</header>
+
+<div class="main">
+  <nav class="sidenav">
+    <div class="nav-section">Getting Started</div>
+    <div class="nav-item active" onclick="scrollToSection('intro')"><span class="nav-dot"></span>Introduction</div>
+
+    <div class="nav-section">Origins Mod</div>
+    <div class="nav-item" onclick="scrollToSection('what-is-origins')"><span class="nav-dot"></span>What is Origins?</div>
+    <div class="nav-item" onclick="scrollToSection('hierarchy')"><span class="nav-dot"></span>File Hierarchy</div>
+    <div class="nav-item" onclick="scrollToSection('powers')"><span class="nav-dot"></span>Powers</div>
+    <div class="nav-item" onclick="scrollToSection('actions')"><span class="nav-dot"></span>Actions</div>
+    <div class="nav-item" onclick="scrollToSection('conditions')"><span class="nav-dot"></span>Conditions</div>
+
+    <div class="nav-section">Using the Editor</div>
+    <div class="nav-item" onclick="scrollToSection('editor-basics')"><span class="nav-dot"></span>Editor Basics</div>
+    <div class="nav-item" onclick="scrollToSection('block-types')"><span class="nav-dot"></span>Block Types</div>
+    <div class="nav-item" onclick="scrollToSection('connecting')"><span class="nav-dot"></span>Connecting Blocks</div>
+    <div class="nav-item" onclick="scrollToSection('importing')"><span class="nav-dot"></span>Importing JSON</div>
+    <div class="nav-item" onclick="scrollToSection('shortcuts')"><span class="nav-dot"></span>Shortcuts</div>
+
+    <div class="nav-section">Using the Manager</div>
+    <div class="nav-item" onclick="scrollToSection('manager-basics')"><span class="nav-dot"></span>Manager Basics</div>
+    <div class="nav-item" onclick="scrollToSection('namespaces')"><span class="nav-dot"></span>Namespaces</div>
+    <div class="nav-item" onclick="scrollToSection('origins-section')"><span class="nav-dot"></span>Origins</div>
+    <div class="nav-item" onclick="scrollToSection('layers')"><span class="nav-dot"></span>Layers</div>
+    <div class="nav-item" onclick="scrollToSection('exporting')"><span class="nav-dot"></span>Exporting</div>
+  </nav>
+
+  <div class="content">
+
+    <!-- INTRO -->
+    <div class="section" id="intro">
+      <div class="section-tag">Getting Started</div>
+      <h2>Welcome to Origins Builder</h2>
+      <p class="lead">Origins Builder is a visual tool for creating custom Origins for the Minecraft Origins mod (Forge 1.20.1). Instead of writing JSON by hand, you build powers visually using a block-based editor — then export a ready-to-use datapack.</p>
+      <p>This guide explains how the Origins mod works and how to use Origins Builder to go from an idea to a working datapack.</p>
+      <div class="info-box tip">
+        <div class="info-box-title">💡 Tip</div>
+        <p>If you already know how Origins works, skip straight to <strong>Using the Editor</strong> or <strong>Using the Manager</strong>.</p>
+      </div>
+    </div>
+
+
+    <hr>
+
+    <!-- WHAT IS ORIGINS -->
+    <div class="section" id="what-is-origins">
+      <div class="section-tag">Origins Mod</div>
+      <h2>What is Origins?</h2>
+      <p class="lead">Origins is a Minecraft mod that lets players choose a species or origin at the start of a world, each with unique abilities, strengths, and weaknesses.</p>
+      <p>Origins are defined through datapacks — JSON files that tell the mod what powers each origin has, what those powers do, and under what conditions they activate. Origins Builder generates these files for you.</p>
+      <p>An origin might give a player the ability to fly, take reduced damage from fire, or apply effects to nearby enemies. All of this is built from combining powers, actions, and conditions.</p>
+    </div>
+
+    <!-- HIERARCHY -->
+    <div class="section" id="hierarchy">
+      <div class="section-tag">Origins Mod</div>
+      <h2>How Everything Fits Together</h2>
+      <p class="lead">Think of it like building blocks. At the top is a <strong>Layer</strong> — it's the selection screen players see when they join. Inside the layer are <strong>Origins</strong> — the actual species players can pick. Each origin has a list of <strong>Powers</strong> — the abilities that origin has. And powers are built from <strong>Actions</strong> and <strong>Conditions</strong>.</p>
+
+      <div class="hierarchy" style="margin:24px 0;">
+        <div class="hierarchy-row" style="margin-bottom:4px;">
+          <div class="hierarchy-box" style="background:var(--accent)15;border-color:var(--accent)44;color:var(--accent);font-size:13px;padding:10px 18px;">📋 Layer</div>
+          <p style="font-size:13px;color:var(--muted);margin:0">The origin selection screen. Contains a list of origins players can choose from.</p>
+        </div>
+        <div style="width:2px;height:16px;background:var(--border2);margin-left:18px;"></div>
+        <div class="hierarchy-row" style="margin-bottom:4px;margin-left:24px;">
+          <div class="hierarchy-box" style="background:var(--accent2)15;border-color:var(--accent2)44;color:var(--accent2);font-size:13px;padding:10px 18px;">⭐ Origin</div>
+          <p style="font-size:13px;color:var(--muted);margin:0">A playable species like "Angel" or "Merling". Has a name, icon, and a list of powers.</p>
+        </div>
+        <div style="width:2px;height:16px;background:var(--border2);margin-left:42px;"></div>
+        <div class="hierarchy-row" style="margin-bottom:4px;margin-left:48px;">
+          <div class="hierarchy-box" style="background:#1B9E6E22;border-color:#1B9E6E44;color:#1B9E6E;font-size:13px;padding:10px 18px;">⚡ Power</div>
+          <p style="font-size:13px;color:var(--muted);margin:0">A single ability. Each power does one thing — fly, glow, deal damage on hit, etc.</p>
+        </div>
+        <div style="width:2px;height:16px;background:var(--border2);margin-left:66px;"></div>
+        <div class="hierarchy-row" style="margin-left:72px;gap:8px;flex-wrap:wrap;">
+          <div class="hierarchy-box" style="background:#0e749022;border-color:#0e749044;color:#0e7490;font-size:12px;padding:8px 14px;">▶ Action</div>
+          <div class="hierarchy-box" style="background:#7c3aed22;border-color:#7c3aed44;color:#c4b5fd;font-size:12px;padding:8px 14px;">◆ Condition</div>
+          <p style="font-size:12px;color:var(--muted);margin:0;align-self:center;">The building blocks that make powers do things and check requirements</p>
+        </div>
+      </div>
+
+      <p style="font-size:14px;line-height:1.8;opacity:0.85;margin-bottom:8px;margin-top:16px;"><strong>Actions</strong> are things that <em>happen</em> — they're verbs. Set the player on fire. Deal damage. Teleport. Give an item. A power triggers actions when it activates.</p>
+      <p style="font-size:14px;line-height:1.8;opacity:0.85;margin-bottom:16px;"><strong>Conditions</strong> are checks — they return true or false. Is the player in water? Is it night? Is the entity on fire? Powers use conditions to decide <em>when</em> they should be active. Actions use conditions to decide <em>who</em> they should affect.</p>
+
+      <div class="info-box note">
+        <div class="info-box-title">📌 Example</div>
+        <p>An "Angel" origin might have a "Wings" power that gives elytra flight — always on, no conditions needed. It might also have a "Holy Aura" power that sets nearby enemies on fire, but <em>only during the day</em> — that's a power with a <strong>time of day condition</strong> attached, and a <strong>set on fire action</strong> as the effect.</p>
+      </div>
+    </div>
+
+    <!-- POWERS -->
+    <div class="section" id="powers">
+      <div class="section-tag">Origins Mod</div>
+      <h2>Powers</h2>
+      <p class="lead">A power is a single ability assigned to an origin. Each power has a type that defines what it does, plus optional fields to configure it.</p>
+      <div class="block-grid">
+        <div class="block-card">
+          <div class="block-header" style="background:#0a4a35;color:#6ee7b7">⚡ POWER — GENERAL</div>
+          <div class="block-body" style="background:#1B9E6E22">Passive and always-on abilities. Flight, night vision, attribute modifiers, resource bars.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#451a03;color:#fde68a">🎯 POWER — ACTION</div>
+          <div class="block-body" style="background:#b4530922">Triggered abilities. Active skills with cooldowns, key-bound actions, actions on hit.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#083344;color:#67e8f9">✏️ POWER — MODIFY</div>
+          <div class="block-body" style="background:#0e749022">Modifiers that change game values. Damage dealt, damage taken, jump height, swim speed.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#3b0764;color:#e9d5ff">🛡 POWER — PREVENT</div>
+          <div class="block-body" style="background:#6b21a822">Blocks certain actions. Prevent fall damage, prevent eating certain foods, prevent sprinting.</div>
+        </div>
+      </div>
+      <p>Every power can have an optional <strong>condition</strong> that determines when the power is active. For example, a fire resistance power could have a condition that only activates it at night.</p>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="section" id="actions">
+      <div class="section-tag">Origins Mod</div>
+      <h2>Actions</h2>
+      <p class="lead">Actions are things that happen — they're verbs. Apply an effect, deal damage, teleport, set on fire, give an item.</p>
+      <p>Actions come in four types based on what they affect:</p>
+      <div class="block-grid">
+        <div class="block-card">
+          <div class="block-header" style="background:#134e4a;color:#99f6e4">🧍 ENTITY ACTION</div>
+          <div class="block-body" style="background:#0f766e22">Affects a single entity — the player, a mob. Apply effect, damage, heal, set on fire.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#2e1065;color:#c4b5fd">👥 BI-ENTITY ACTION</div>
+          <div class="block-body" style="background:#7c3aed22">Affects a pair of entities — actor and target. Used in area of effect, on-hit actions.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#1a2e05;color:#bef264">🧱 BLOCK ACTION</div>
+          <div class="block-body" style="background:#65a30d22">Affects a block in the world. Set block, explode, bone meal.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#082f49;color:#7dd3fc">🗡️ ITEM ACTION</div>
+          <div class="block-body" style="background:#0369a122">Affects an item stack. Damage item, consume, modify NBT.</div>
+        </div>
+      </div>
+      <div class="info-box tip">
+        <div class="info-box-title">💡 Tip</div>
+        <p>Use <strong>AND Actions</strong> to run multiple actions at once, and <strong>If-Else Action</strong> to branch based on a condition.</p>
+      </div>
+    </div>
+
+    <!-- CONDITIONS -->
+    <div class="section" id="conditions">
+      <div class="section-tag">Origins Mod</div>
+      <h2>Conditions</h2>
+      <p class="lead">Conditions are checks — they return true or false. Is the player in water? Is it night? Is the entity on fire?</p>
+      <p>They're used in three places: on a <strong>power</strong> to control when it's active, on an <strong>action</strong> to filter which entities it affects, and on a <strong>bientity action</strong> to filter which actor/target pairs it applies to. They come in the same types as actions — plus damage conditions for checking what kind of hit occurred.</p>
+      <div class="block-grid">
+        <div class="block-card">
+          <div class="block-header" style="background:#134e4a;color:#99f6e4">🧍 ENTITY CONDITION</div>
+          <div class="block-body" style="background:#0f766e22">Checks something about a single entity. In water, on fire, health below 50%, sneaking, holding item.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#2e1065;color:#c4b5fd">👥 BI-ENTITY CONDITION</div>
+          <div class="block-body" style="background:#7c3aed22">Checks the relationship between two entities. Actor is owner of target, entities are on the same team.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#1a2e05;color:#bef264">🧱 BLOCK CONDITION</div>
+          <div class="block-body" style="background:#65a30d22">Checks something about a block in the world. Block is air, is fluid, has a specific tag.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#082f49;color:#7dd3fc">🗡️ ITEM CONDITION</div>
+          <div class="block-body" style="background:#0369a122">Checks something about an item stack. Is a specific item, has an enchantment, stack count.</div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#500724;color:#fda4af">💢 DAMAGE CONDITION</div>
+          <div class="block-body" style="background:#be185d22">Checks the type of damage taken or dealt. Is it fire damage? Fall damage? A projectile?</div>
+        </div>
+      </div>
+      <div class="info-box tip">
+        <div class="info-box-title">💡 Tip</div>
+        <p>Use <strong>AND Conditions</strong> to require multiple checks at once, <strong>OR Conditions</strong> to accept any of them, and <strong>NOT Condition</strong> to invert a check — e.g. "not on fire".</p>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- EDITOR BASICS -->
+    <div class="section" id="editor-basics">
+      <div class="section-tag">Using the Editor</div>
+      <h2>Editor Basics</h2>
+      <p class="lead">The block editor lets you build power JSON visually by dragging and connecting blocks.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <div class="step-title">Pick a block from the palette</div>
+            <div class="step-desc">Click a category in the left sidebar (Power, Action, Condition, Meta) to open the palette. Drag a block onto the canvas.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <div class="step-title">Fill in the fields</div>
+            <div class="step-desc">Each block has input fields for its properties. Click any field to edit it. Dropdowns show valid options.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <div class="step-title">Connect child blocks</div>
+            <div class="step-desc">Drag child blocks from the palette and drop them into the slot areas at the bottom of parent blocks. The connector bump snaps into the notch.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <div class="step-title">Copy or export the JSON</div>
+            <div class="step-desc">Click <strong>⬇ COPY JSON</strong> to copy the generated JSON to clipboard, or save it directly from the Manager.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BLOCK TYPES -->
+    <div class="section" id="block-types">
+      <div class="section-tag">Using the Editor</div>
+      <h2>Block Types & Colors</h2>
+      <p class="lead">Every block has a color that tells you what type it is. You can only place a block into a slot that accepts its type — the editor will highlight valid slots when you drag.</p>
+
+      <h3>Powers <span style="font-size:12px;color:var(--muted);font-weight:400">— always the top/root block</span></h3>
+      <div class="block-grid">
+        <div class="block-card"><div class="block-header" style="background:#0a4a35;color:#6ee7b7">⚡ POWER — GENERAL</div><div class="block-body" style="background:#1B9E6E22">Passive abilities that are always active — night vision, flight, attribute bonuses.</div></div>
+        <div class="block-card"><div class="block-header" style="background:#451a03;color:#fde68a">🎯 POWER — ACTION</div><div class="block-body" style="background:#b4530922">Active abilities triggered by a key press or an in-game event.</div></div>
+        <div class="block-card"><div class="block-header" style="background:#083344;color:#67e8f9">✏️ POWER — MODIFY</div><div class="block-body" style="background:#0e749022">Changes a number — damage dealt, swim speed, jump height.</div></div>
+        <div class="block-card"><div class="block-header" style="background:#3b0764;color:#e9d5ff">🛡 POWER — PREVENT</div><div class="block-body" style="background:#6b21a822">Stops something from happening — fall damage, eating certain food.</div></div>
+      </div>
+
+      <h3 style="margin-top:24px;">Actions & Conditions <span style="font-size:12px;color:var(--muted);font-weight:400">— share colors by world type</span></h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Actions and conditions that affect the same type of thing share the same color. For example, <strong style="color:#0f766e">Entity Actions</strong> and <strong style="color:#0f766e">Entity Conditions</strong> are both teal — they both deal with single entities.</p>
+      <div class="block-grid">
+        <div class="block-card">
+          <div class="block-header" style="background:#134e4a;color:#99f6e4">🧍 ENTITY</div>
+          <div class="block-body" style="background:#0f766e22">Things involving a single entity (player or mob).<br><span style="color:var(--muted);font-size:11px;">Entity Action + Entity Condition</span></div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#2e1065;color:#c4b5fd">👥 BI-ENTITY</div>
+          <div class="block-body" style="background:#7c3aed22">Things involving two entities at once — an actor and a target.<br><span style="color:var(--muted);font-size:11px;">BiEntity Action + BiEntity Condition</span></div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#1a2e05;color:#bef264">🧱 BLOCK</div>
+          <div class="block-body" style="background:#65a30d22">Things involving world blocks.<br><span style="color:var(--muted);font-size:11px;">Block Action + Block Condition</span></div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#082f49;color:#7dd3fc">🗡️ ITEM</div>
+          <div class="block-body" style="background:#0369a122">Things involving item stacks.<br><span style="color:var(--muted);font-size:11px;">Item Action + Item Condition</span></div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#500724;color:#fda4af">💢 DAMAGE</div>
+          <div class="block-body" style="background:#be185d22">Checks what type of damage was dealt or received.<br><span style="color:var(--muted);font-size:11px;">Damage Condition only</span></div>
+        </div>
+        <div class="block-card">
+          <div class="block-header" style="background:#083344;color:#67e8f9">🔗 META</div>
+          <div class="block-body" style="background:#0891b222">Logic blocks: AND, OR, If-Else, Chance, Invert. Work across all types — place them in any action or condition slot.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECTING -->
+    <div class="section" id="connecting">
+      <div class="section-tag">Using the Editor</div>
+      <h2>Connecting Blocks</h2>
+      <p class="lead">Blocks connect to each other through <strong>slots</strong> — the dashed drop zones at the bottom of parent blocks. Child blocks snap in using a bump-and-notch system, just like real building blocks.</p>
+
+      <h3>Visual example</h3>
+      <!-- Visual block diagram -->
+      <div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:24px;margin:16px 0;display:flex;flex-direction:column;gap:0;align-items:flex-start;">
+        <!-- Parent block -->
+        <div style="background:#1B9E6E;border-radius:10px;width:260px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+          <div style="background:#0a4a35;padding:8px 14px;font-size:11px;font-weight:700;color:#6ee7b7;letter-spacing:0.05em;">⚡ POWER — GENERAL &nbsp; Active Self</div>
+          <div style="padding:10px 14px;">
+            <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:6px;">cooldown &nbsp;<span style="color:#fff">20</span></div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.5);">key &nbsp;<span style="color:#fff">key.origins.primary_active</span></div>
+          </div>
+          <!-- Slot -->
+          <div style="margin:0 8px 8px;border:1.5px dashed rgba(110,231,183,0.4);border-radius:8px;padding:8px 12px;font-size:10px;color:rgba(110,231,183,0.6);text-align:center;">ENTITY_ACTION &nbsp;↓ drop here</div>
+          <!-- Bump -->
+          <div style="width:28px;height:10px;background:#1B9E6E;border-radius:0 0 5px 5px;margin-left:20px;"></div>
+        </div>
+        <!-- Arrow -->
+        <div style="margin-left:28px;width:2px;height:0;"></div>
+        <!-- Child block snapped in -->
+        <div style="background:#0f766e;border-radius:10px;width:220px;margin-left:16px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+          <div style="background:#134e4a;padding:8px 14px;font-size:11px;font-weight:700;color:#99f6e4;letter-spacing:0.05em;">🧍 ENTITY ACTION &nbsp; Set On Fire</div>
+          <div style="padding:10px 14px;">
+            <div style="font-size:11px;color:rgba(255,255,255,0.5);">duration &nbsp;<span style="color:#fff">5</span></div>
+          </div>
+          <div style="width:28px;height:10px;background:#0f766e;border-radius:0 0 5px 5px;margin-left:16px;"></div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:-4px;margin-bottom:20px;">The <strong style="color:var(--text)">Set On Fire</strong> entity action is connected into the <strong style="color:var(--text)">entity_action</strong> slot of the Active Self power. When the player presses the key, they are set on fire.</p>
+
+      <h3>How to connect</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <div class="step-title">Drag from the palette</div>
+            <div class="step-desc">Find the block you want in the palette on the left and drag it toward the slot on the parent block.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <div class="step-title">The slot highlights</div>
+            <div class="step-desc">When you hover over a valid slot, it lights up to show you can drop there. Only slots that accept the block type will highlight.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <div class="step-title">Release to snap in</div>
+            <div class="step-desc">Let go and the block snaps in. The bump on the parent connects with the notch on the child.</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Multi-slots</h3>
+      <p>Some slots accept multiple blocks — like the <strong>AND Actions</strong> block which runs several actions in sequence. You can keep dropping more blocks into it and they stack up.</p>
+
+      <h3>Detaching a block</h3>
+      <p>Click and drag any connected block to pull it out of its slot. It becomes a free block on the canvas and you can move it somewhere else or reconnect it to a different slot.</p>
+
+      <div class="info-box warn">
+        <div class="info-box-title">⚠️ Wrong type?</div>
+        <p>If a slot doesn't light up when you hover over it, the block type doesn't match. Check the slot label — it tells you exactly what type it needs (e.g. <em>entity_action</em>, <em>condition</em>).</p>
+      </div>
+    </div>
+
+    <!-- IMPORTING JSON -->
+    <div class="section" id="importing">
+      <div class="section-tag">Using the Editor</div>
+      <h2>Importing JSON</h2>
+      <p class="lead">Already have an Origins JSON file? Paste it directly into the editor and it converts to blocks automatically.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <div class="step-title">Click ⬆ IMPORT JSON in the toolbar</div>
+            <div class="step-desc">Opens the import modal with a text area.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <div class="step-title">Paste your JSON</div>
+            <div class="step-desc">You can paste the raw JSON directly — even with // comment lines at the top (like file path comments), these are stripped automatically.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <div class="step-title">Click Import</div>
+            <div class="step-desc">The parser reads the type fields, creates the correct blocks, fills their values, and connects nested objects as child blocks. An undo snapshot is saved automatically.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SHORTCUTS -->
+    <div class="section" id="shortcuts">
+      <div class="section-tag">Using the Editor</div>
+      <h2>Keyboard Shortcuts</h2>
+      <table class="shortcut-table">
+        <tr><th>Action</th><th>Shortcut</th></tr>
+        <tr><td>Delete selected/hovered block</td><td><span class="kbd">Delete</span></td></tr>
+        <tr><td>Copy block tree</td><td><span class="kbd">Ctrl</span> + <span class="kbd">C</span></td></tr>
+        <tr><td>Paste block tree</td><td><span class="kbd">Ctrl</span> + <span class="kbd">V</span></td></tr>
+        <tr><td>Undo</td><td><span class="kbd">Ctrl</span> + <span class="kbd">Z</span></td></tr>
+        <tr><td>Redo</td><td><span class="kbd">Ctrl</span> + <span class="kbd">Y</span> or <span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">Z</span></td></tr>
+        <tr><td>Zoom in</td><td><span class="kbd">Ctrl</span> + <span class="kbd">+</span> or scroll up on empty canvas</td></tr>
+        <tr><td>Zoom out</td><td><span class="kbd">Ctrl</span> + <span class="kbd">-</span> or scroll down on empty canvas</td></tr>
+        <tr><td>Reset zoom</td><td><span class="kbd">Ctrl</span> + <span class="kbd">0</span></td></tr>
+        <tr><td>Rename block</td><td>Double-click the block name</td></tr>
+      </table>
+    </div>
+
+    <hr>
+
+    <!-- MANAGER BASICS -->
+    <div class="section" id="manager-basics">
+      <div class="section-tag">Using the Manager</div>
+      <h2>Manager Basics</h2>
+      <p class="lead">The Manager is where you organize all your Origins content and export it as a datapack.</p>
+      <p>Everything is organized under a <strong>namespace</strong> — your mod's unique identifier. Inside a namespace you create origins, powers, and layers. When you're ready, export everything as a ZIP that drops straight into a Minecraft datapack folder.</p>
+    </div>
+
+    <!-- NAMESPACES -->
+    <div class="section" id="namespaces">
+      <div class="section-tag">Using the Manager</div>
+      <h2>Namespaces</h2>
+      <p class="lead">A namespace is your mod's unique ID — like <code style="font-family:var(--mono);background:var(--surface2);padding:2px 6px;border-radius:4px;">divinity</code> or <code style="font-family:var(--mono);background:var(--surface2);padding:2px 6px;border-radius:4px;">chaos</code>. It must be lowercase with no spaces.</p>
+      <p>All your origins and powers will be referenced as <code style="font-family:var(--mono);background:var(--surface2);padding:2px 6px;border-radius:4px;">namespace:id</code> — for example <code style="font-family:var(--mono);background:var(--surface2);padding:2px 6px;border-radius:4px;">divinity:stormpiercer</code>.</p>
+      <div class="info-box warn">
+        <div class="info-box-title">⚠️ Important</div>
+        <p>Choose your namespace carefully — changing it later means updating all references. It should be unique to your mod to avoid conflicts with other datapacks.</p>
+      </div>
+    </div>
+
+    <!-- ORIGINS SECTION -->
+    <div class="section" id="origins-section">
+      <div class="section-tag">Using the Manager</div>
+      <h2>Origins & Powers</h2>
+      <p class="lead">Under each namespace you create <strong>Origins</strong> and <strong>Powers</strong> separately, then link them together.</p>
+
+      <h3>Creating a Power</h3>
+      <p>Go to the <strong>Powers</strong> tab and click <strong>+ New Power</strong>. Give it a name and ID, then click <strong>Create & Edit</strong> — this opens the block editor where you build what the power actually does. When you're done, click <strong>💾 Save Power</strong> to save it back to the Manager. A green dot means the power has been saved, yellow means it hasn't been built yet.</p>
+
+      <h3>Creating an Origin</h3>
+      <p>Go to the <strong>Origins</strong> tab and click <strong>+ New Origin</strong>. Fill in:</p>
+      <div class="steps" style="gap:10px;">
+        <div class="step">
+          <div class="step-num" style="width:20px;height:20px;font-size:10px;border-radius:5px;">●</div>
+          <div class="step-content"><div class="step-title">Name & Description</div><div class="step-desc">What players see in the selection screen.</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="width:20px;height:20px;font-size:10px;border-radius:5px;">●</div>
+          <div class="step-content"><div class="step-title">Icon Item</div><div class="step-desc">A Minecraft item ID shown as the icon — e.g. <code style="font-family:var(--mono);background:var(--surface2);padding:1px 5px;border-radius:3px;">minecraft:feather</code>.</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="width:20px;height:20px;font-size:10px;border-radius:5px;">●</div>
+          <div class="step-content"><div class="step-title">Impact (0–3)</div><div class="step-desc">How powerful this origin is. Shown as stars in the selection screen.</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="width:20px;height:20px;font-size:10px;border-radius:5px;">●</div>
+          <div class="step-content"><div class="step-title">Assign Powers</div><div class="step-desc">Tick the powers you want this origin to have. Only saved powers appear here.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LAYERS -->
+    <div class="section" id="layers">
+      <div class="section-tag">Using the Manager</div>
+      <h2>Layers</h2>
+      <p class="lead">An origin layer controls which origins appear in the selection screen. Without a layer file, your origins won't show up in-game.</p>
+      <p>The default layer file is named <code style="font-family:var(--mono);background:var(--surface2);padding:2px 6px;border-radius:4px;">origin.json</code> and goes in <code style="font-family:var(--mono);background:var(--surface2);padding:2px 6px;border-radius:4px;">data/origins/origin_layers/</code>. Set <strong>replace</strong> to false to add your origins to the existing selection screen rather than replacing it entirely.</p>
+      <div class="info-box note">
+        <div class="info-box-title">📌 Note</div>
+        <p>The <strong>order</strong> field controls the sort position of your layer relative to other mods. Lower numbers appear first.</p>
+      </div>
+    </div>
+
+    <!-- EXPORTING -->
+    <div class="section" id="exporting">
+      <div class="section-tag">Using the Manager</div>
+      <h2>Exporting Your Datapack</h2>
+      <p class="lead">When you're happy with everything, click <strong>⬇ Export ZIP</strong> in the header. This downloads a ZIP file that is a complete, ready-to-use Minecraft datapack.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <div class="step-title">Click ⬇ Export ZIP</div>
+            <div class="step-desc">Make sure all your powers have a green dot — that means they've been built and saved. Yellow dots mean the power hasn't been edited yet and won't be included.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <div class="step-title">Extract the ZIP</div>
+            <div class="step-desc">Unzip the downloaded file — you'll see a folder structure with your origins and powers inside.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <div class="step-title">Drop it into Minecraft</div>
+            <div class="step-desc">Copy the extracted folder into your Minecraft world's <strong>datapacks</strong> folder — found at <code style="font-family:var(--mono);background:var(--surface2);padding:1px 5px;border-radius:3px;">.minecraft/saves/&lt;worldname&gt;/datapacks/</code>. Launch Minecraft, load the world, and your origins will appear in the selection screen.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-box tip">
+        <div class="info-box-title">💡 Don't forget the Layer</div>
+        <p>Make sure you've created a Layer in the <strong>Layers</strong> tab and added your origins to it — without a layer, your origins won't show up in the selection screen even if everything else is correct.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function goBack() {
+  if(window.parent !== window) {
+    window.parent.postMessage({ type: 'CLOSE_OVERLAY', overlay: 'guide' }, '*');
+    return;
+  }
+  if(history.length > 1) history.back();
+  else window.location.href = 'origins-manager.html';
+}
+
+// Set back button label based on referrer
+// back button label is just "← Back" always
+
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({behavior:'smooth', block:'start'});
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+// Highlight active section on scroll
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if(entry.isIntersecting) {
+      const id = entry.target.id;
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      const matching = [...document.querySelectorAll('.nav-item')].find(el =>
+        el.getAttribute('onclick')?.includes(`'${id}'`)
+      );
+      if(matching) matching.classList.add('active');
+    }
+  });
+}, {threshold: 0.3});
+
+document.querySelectorAll('.section[id]').forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
